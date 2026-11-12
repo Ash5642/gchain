@@ -1,0 +1,36 @@
+[package]
+name = "rust_blockchain"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rocksdb = "0.25.0"
+prost = "0.13" # Verify the latest version on crates.io
+hex = "0.4"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+libp2p = { version = "0.54", features = ["full"] }
+futures = "0.3"
+sha2 = "0.10"
+bloom = "0.2.0"
+rand = "0.10"
+tokio-rusqlite = "0.6.0" 
+rusqlite = "0.32.0" 
+fastbloom = "0.17.0"
+rsa = { version = "0.9", features = ["sha2"] }
+async-recursion = "1.1.1"
+bytes = "1.12.1"
+ml-dsa = { version = "0.1.1", features = ["getrandom", "pkcs8"] }
+time = "0.3.55"
+serde_json = "1.0"
+tokio-util = { version = "0.7", features = ["codec"] }
+futures-util = "0.3"
+[build-dependencies]
+prost-build = "0.13"
+
+[profile.release]
+opt-level = 3          # Maximum optimizations (default for release)
+lto = "fat"            # Full Link-Time Optimization across all crates (slows builds)
+codegen-units = 1      # Reduce parallel codegen units to allow deeper LLVM optimizations
+panic = "abort"        # Removes stack unwinding overhead (reduces binary size too)
+strip = true    

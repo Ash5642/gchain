@@ -1,0 +1,180 @@
+{
+    "structures": {
+        "ANCHOR": {
+            "data_template": {},
+            "load": []
+        },
+        "KEY": {
+            "attribute": "key",
+            "issued": [],
+            "data_template": {
+                "public_key": [
+                    "bytes",
+                    ""
+                ],
+                "private_key": [
+                    "bytes",
+                    ""
+                ],
+                "REVOKED": [
+                    "bool",
+                    true
+                ],
+                "nonce": [
+                    "bytes",
+                    ""
+                ],
+                "signature": [
+                    "bytes",
+                    ""
+                ],
+                "type": [
+                    "str",
+                    "RSA"
+                ]
+            },
+            "load": [
+                [
+                    "KEY",
+                    "PARENT"
+                ]
+            ],
+            "chain": "BOTH"
+        },
+        "SIGNATURE": {
+            "attribute": "key",
+            "issued": [],
+            "data_template": {
+                "key": [
+                    "gid:key",
+                    "KEY"
+                ],
+                "resource": [
+                    "gid",
+                    "GRID"
+                ],
+                "signature": [
+                    "bytes",
+                    ""
+                ],
+                "status": [
+                    "str",
+                    "pending"
+                ]
+            },
+            "load": [
+                [
+                    "KEY",
+                    "PARENT"
+                ]
+            ],
+            "chain": "BOTH"
+        },
+        "VALUE": {},
+        "RECORD": {
+            "attribute": "record",
+            "issued": [],
+            "data_template": {
+                "type": [
+                    "str",
+                    ""
+                ]
+            },
+            "chain": "BOTH"
+        },
+        "DOCUMENT": {
+            "data_template": {
+                "type": [
+                    "str",
+                    "GENERIC"
+                ],
+                "family": [
+                    "gid",
+                    "",
+                    [
+                        "FAMILY"
+                    ]
+                ],
+                "grant": [
+                    "gid",
+                    "",
+                    [
+                        "GRANT"
+                    ]
+                ],
+                "data": [
+                    "str",
+                    ""
+                ]
+            },
+            "load": [
+                [
+                    "GRANT",
+                    "PARENT"
+                ]
+            ]
+        },
+        "FAMILY": {
+            "data_template": {
+                "name": [
+                    "str",
+                    "GENERIC"
+                ],
+                "parent": [
+                    "gid",
+                    "",
+                    [
+                        "FAMILY"
+                    ]
+                ],
+                "template": [
+                    "str",
+                    ""
+                ]
+            }
+        },
+        "GRANT": {
+            "data_template": {
+                "family": [
+                    "gid",
+                    "",
+                    [
+                        "FAMILY"
+                    ]
+                ],
+                "entity": [
+                    "gid",
+                    "",
+                    [
+                        "FAMILY"
+                    ]
+                ],
+                "issue": [
+                    "bool",
+                    false
+                ],
+                "grant": [
+                    "bool",
+                    false
+                ]
+            }
+        },
+        "LOCALROOT": {
+            "attribute": "document_grant",
+            "data_template": {
+                "root": [
+                    "bytes",
+                    ""
+                ],
+                "signing_key": [
+                    "str",
+                    ""
+                ],
+                "signature": [
+                    "bytes",
+                    ""
+                ]
+            }
+        }
+    }
+}
