@@ -5,11 +5,17 @@ Starting the rust core
     mkdir dbs/state
     RUSTFLAGS="-Awarnings" cargo run <port_num, default 8001> <dbs dir> <node GEID> <signing key GRID>
 
+Starting with included database
+    
+
 Starting Python orchestrator
 
     cd orchestrator
     source <virtual enviornment>
     fastapi run main.py
+
+**Note:** For local development and testing convenience, the runtime features a permissive validation mode that logs warnings on signature mismatches or missing proofs rather than hard-dropping the pipeline.
+
 **Basic overview**
 - **Core blockchain**: this handles the blocks, resource validation and maintaining the state. Written entitely in Rust
   - **Functions**
