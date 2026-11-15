@@ -55,10 +55,10 @@ pub struct Cache{}
 
 impl Cache{
     pub async fn add_cache_db(grid: String) -> Result<()> {
-        //println!("Updating cache list");
+        //////println!("Updating cache list");
         let cache_filter = HostCache.read().await;
         if cache_filter.contains(&grid){
-            //println!("Element already in list");
+            //////println!("Element already in list");
             return Ok(())
         }
         drop(cache_filter);
@@ -75,7 +75,7 @@ impl Cache{
         let mut cache_filter = HostCache.write().await;
         cache_filter.insert(&grid_clone);
         drop(cache_filter);
-        //println!("Cache updated!");
+        //////println!("Cache updated!");
         conn.close().await?;
         Ok(
             (
@@ -86,10 +86,10 @@ impl Cache{
 
 
     pub async fn load_cache() -> Result<()> {
-        //println!("Loading cached");
+        //////println!("Loading cached");
         let conn = Connection::open("cached.db").await?;
         let mut cache_filter = HostCache.write().await;
-        //println!("CACHE DB");
+        //////println!("CACHE DB");
         let header_result = conn.call(move|conn| {
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS cached (
@@ -106,15 +106,15 @@ impl Cache{
                 })?
                 .collect::<std::result::Result<Vec<String>, rusqlite::Error>>()?;
                 
-            //println!("{:?}", header_result);
+            //////println!("{:?}", header_result);
             Ok(header_result)
         })
         .await?;
         for header in header_result{
-            //println!("HEHEHEHEHE {}", header);
+            //////println!("HEHEHEHEHE {}", header);
             cache_filter.insert(&header);
         }
-        //println!("Continuing");
+        //////println!("Continuing");
         conn.close().await?;
         Ok(())
 }

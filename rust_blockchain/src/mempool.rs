@@ -129,7 +129,7 @@ impl BLOCKHEAD{
         let mut buf = Vec::<u8>::new();
         new_header_protobuf.encode(&mut buf).unwrap();
         let buf_encoded = hex::encode(&buf);
-        //println!("Header: {}", buf_encoded);
+        //////println!("Header: {}", buf_encoded);
         return buf
     }
 }

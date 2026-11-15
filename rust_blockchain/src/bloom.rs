@@ -4,7 +4,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, tls, yamux, Multiaddr, PeerId,
 };
-use crate::mempool_actions;
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::{Mutex, OnceLock};
@@ -50,7 +50,7 @@ pub async fn create_bloom(mut resources:Vec::<Resource>) -> mempool::BLOOMFILTER
         .expected_items(1000); // Correctly constructs the BloomFilter<DefaultHasher>
 
     for item in resources.clone(){
-        //////////////println!("ADDING ITEM {} TO FILTER", item.clone().payload.unwrap().grid);
+        //////////////////println!("ADDING ITEM {} TO FILTER", item.clone().payload.unwrap().grid);
         if let Some(inner) = &item.payload {
             let name_clone = inner.grid.clone();
             filter.insert(&name_clone);
@@ -71,17 +71,17 @@ pub async fn create_bloom(mut resources:Vec::<Resource>) -> mempool::BLOOMFILTER
 
 pub fn check_header(mut grid:String, header:BLOCKHEAD) -> bool{
 
-        ////////////////println!("CHECKING BLOOM for {}", grid.clone());
+        ////////////////////println!("CHECKING BLOOM for {}", grid.clone());
     let restored_filter = BloomFilter::from_vec(header.bloom.bits.clone())
         .seed(&12345u128)
         .hashes(header.bloom.num_hashes.clone());
     let contains = restored_filter.contains(&grid);
-    ////////////////println!("contains {}:{}", contains, grid);
+    ////////////////////println!("contains {}:{}", contains, grid);
     let grid_cloned = grid.clone();
     let encoded = hex::encode(header.merkle.clone());
     return contains;
         
     
-    ////////////////println!("NO CHECKING BLOOM");
+    ////////////////////println!("NO CHECKING BLOOM");
     
 }

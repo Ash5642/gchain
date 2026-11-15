@@ -89,7 +89,7 @@ impl Cash{
 
 
     pub async fn create_transaction(sender: &str, reciever: &str, amt: u64, identifier: &str) -> Resource{
-        println!("Creating transaction from {} to {} of {}", sender, reciever, amt);
+        ////println!("Creating transaction from {} to {} of {}", sender, reciever, amt);
 
         let transaction = Resource{
             payload: Some(

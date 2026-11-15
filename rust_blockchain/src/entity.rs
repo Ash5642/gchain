@@ -4,7 +4,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, tls, yamux, Multiaddr, PeerId,
 };
-use crate::mempool_actions;
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::{Mutex, OnceLock};

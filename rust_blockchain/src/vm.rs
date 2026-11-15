@@ -42,6 +42,11 @@ use std::collections::HashMap;
 use crate::proto_bufs::Operand as Operand;
 use crate::proto_bufs::Instruction as Instruction;
 
+mod resolve; 
+mod resource_management; 
+mod memory;
+mod cash_management;
+mod vm_cryptography;
 
 #[derive(Clone)]
 
@@ -50,6 +55,13 @@ pub struct ExecutionIO{
     r#type: u8,
     resource: Option<Resource>
 }
+
+#[derive(Clone)]
+pub struct ResourceVar{
+    resource: Resource,
+    mutable: bool
+}
+
 
 #[derive(Clone)]
 
@@ -87,14 +99,18 @@ pub struct Execution{
     entity: String,
     inputs: Vec::<ExecutionIO>,
     memory: MemorySpace,
-    pub generated: Vec::<Resource>,
+    pub generated: HashMap<String, Resource>,
+    pub loaded: HashMap<String, Resource>,
+    pub resources: HashMap<String, ResourceVar>,
     stack: Vec::<Frame>,
     balances: Vec::<Balance>,
-    caller: String
+    caller: String,
+    cost: u64
 }
 
 
 impl Execution{
+
     pub fn start() -> Execution{
         let main_frame = Frame{
             memory: MemorySpace{
@@ -103,111 +119,239 @@ impl Execution{
             inputs: Vec::new(),
             returns: Vec::new(),
             instructions: vec![
-                Instruction{
-                    operation: "GSET".to_string(),
-                    operands: vec![
-                        Operand{
-                            r#type: "D".to_string(),
-                            key: "test_var".bytes().collect()
-                        },
-                        Operand{
-                            r#type: "D".to_string(),
-                            key: "str".bytes().collect()
-                        },
-                        Operand{
-                            r#type: "D".to_string(),
-                            key: "test_val".bytes().collect()
-                        }
-                    ]
-                },
-                Instruction{
-                    operation: "ISSUE".to_string(),
-                    operands: vec![
-                        Operand{
-                            r#type: "D".to_string(),
-                            key: "GRANT".bytes().collect()
-                        }
-                    ]
-                },
+                
+
                 Instruction{
                     operation: "CASH".to_string(),
+                    write: Some(
+                        Operand{
+                            r#type: "M".to_string(),
+                            key: "IssuedGrid".bytes().collect(),
+                            args: vec![]
+                        }
+                    ),
+                    operands: vec![
+                        Operand{
+                            r#type: "E".to_string(),
+                            key: "geid".bytes().collect(),
+                            args: vec![]
+                        },
+                        Operand{
+                            r#type: "D".to_string(),
+                            key: u64::from(5 as u64).to_le_bytes().to_vec(),
+                            args: vec![]
+                        }
+                    ]
+                },
+                Instruction{
+                    operation: "LOAD".to_string(),
+                    write: None,
+                    operands: vec![
+                        Operand{
+                            r#type: "D".to_string(),
+                            key: "TestUser1[KEY][SIGN]=nvdwj8IFSlpfH7MIOpcKNOm2KUoaNcew".bytes().collect(),
+                            args: vec![]
+                        }
+                    ]
+                },
+                Instruction{
+                    operation: "SIGN".to_string(),
+                    write: Some(
+                        Operand{
+                            r#type: "M".to_string(),
+                            key: "SIGNATURE_GEN".bytes().collect(),
+                            args: vec![]
+                        }
+                    ),
+                    operands: vec![
+                        Operand{
+                            r#type: "D".to_string(),
+                            key: "TestUser1[KEY][SIGN]=nvdwj8IFSlpfH7MIOpcKNOm2KUoaNcew".bytes().collect(),
+                            args: vec![]
+                        },
+                        Operand{
+                            r#type: "D".to_string(),
+                            key: "COCK".bytes().collect(),
+                            args: vec![]
+                        }
+                    ]
+                },
+                Instruction{
+                    operation: "CSIGN".to_string(),
+                    write: None,
+                    operands: vec![
+                        Operand{
+                            r#type: "D".to_string(),
+                            key: "TestUser1[KEY][SIGN]=nvdwj8IFSlpfH7MIOpcKNOm2KUoaNcew".bytes().collect(),
+                            args: vec![]
+                        },
+                        Operand{
+                            r#type: "D".to_string(),
+                            key: "COCK".bytes().collect(),
+                            args: vec![]
+                        },
+                        Operand{
+                            r#type: "M".to_string(),
+                            key: "SIGNATURE_GEN".bytes().collect(),
+                            args: vec![]
+                        }
+                    ]
+                },
+                Instruction{
+                    operation: "PRINT".to_string(),
+                    write: None,
                     operands: vec![
                         Operand{
                             r#type: "M".to_string(),
-                            key: "test_var".bytes().collect()
-                        },
-                        Operand{
-                            r#type: "R".to_string(),
-                            key: u64::from(5 as u64).to_le_bytes().to_vec()
+                            key: "IssuedGrid".bytes().collect(),
+                            args: vec![]
                         }
                     ]
                 },
+                
+
                 Instruction{
                     operation: "RETURN".to_string(),
+                    write: None,
                     operands: vec![]
                 }
             ]
         };
         let execution = Execution{
-            executable: "GovtOfIndia[CODE]=1234".to_string(),
-            entity: "GovtOfIndia".to_string(),
+            cost: 0,
+            executable: "TestUser1[CODE]=1234".to_string(),
+            entity: "TestUser1".to_string(),
             inputs: Vec::new(),
             stack: vec![main_frame.clone()],
-            generated: Vec::new(),
-            caller: "test_caller".to_string(),
+            generated: HashMap::new(),
+            resources: HashMap::new(),
+            caller: "TestUser2".to_string(),
+            loaded: HashMap::new(),
             memory: MemorySpace{
                 vars: HashMap::new()
             },
             balances: Vec::new()
         };
-        println!("Executable loaded!");
         
         let mut byte_code = Vec::<u8>::new();
         let new_frame_encoded = proto_bufs::ExecutableFrame{
             instructions: main_frame.instructions.clone()
         };
         new_frame_encoded.encode(&mut byte_code).unwrap();
-        println!("Byte code: {}", hex::encode(byte_code));
         return execution
     }
+    pub async fn execute_instruction(&mut  self, instruction: &Instruction, state: &mut state::StateSession, current_stack: &mut Frame) -> Option<Vec::<u8>>{
+        let mut resolved: Vec<Vec<u8>> = Vec::new();
+        for operand in instruction.operands.iter() {
+            resolved.push(
+                self.resolve(operand, current_stack, state).await.unwrap_or(vec![])
+            );
+        }
+        let mut result: Option<Vec::<u8>> = None;
+        match instruction.operation.as_str(){
+            "ISSUE" => {
+                result = self.issue(&resolved, state).await;
+            },
+            "LOAD" => {
+                println!("Loading resource!");
+                result = self.load_resource(&resolved).await;
+            },
+            "CASH" => {
+                result = self.transfer(&resolved, state).await;
+            }
+            "GSET" => {
+                result = self.set_global(&resolved).await;
+            }
+            "LSET" => {
+                result = self.set_local(&resolved, current_stack).await;
+            }
+            "PRINT" => {
+                println!("{:?}", &resolved);
+                result = Some(vec![true as u8]);
+            }
+            "EQ" => {
+                result = Some(
+                    vec![(resolved[1] == resolved[0]) as u8]
+                );
+            }
+            "LT" => {
+                result = Some(
+                    vec![(resolved[1] < resolved[0]) as u8]
+                );
+            }
+            "GT" => {
+                result =  Some(
+                    vec![(resolved[1] > resolved[0]) as u8]
+                );
+            }
+            "+"|"-"|"*" => {
+                let result =  self.arithmethic(instruction.operation.as_str(), &resolved);
+            }
+            "SET" => {
+                result = Some(resolved[0].clone());
+            }
+            "SIGN" => {
+                //for convenienece
+                result = self.sign(&resolved, current_stack, state).await;
+            }
+            "CSIGN" => {
+                //check signature
+                result = self.check_signature(&resolved, current_stack, state).await;
+            }
+            "RETURN" => {
+                return Some(vec![]);
+            }
+            
+            "JUMP" => {
+                if resolved[0][0] == 1{
+                    println!("Jumping...");
+                    return Some(resolved[1].clone())
+                }
+                else{
+                    return None
+                }
+            }
+            
+            _ => {
+            }
+        }
+        if result.is_none(){
+            return None;
+        }
 
+        if let Some(write_operand) = &instruction.write {
+            let return_var = MemoryVar{
+                key: write_operand.key.clone(),
+                r#type: "STR".to_string(),
+                value: result.as_ref().unwrap().to_vec()
+            };
+            let write = self.write( &instruction.write.as_ref().unwrap(), current_stack, state, return_var).await;
+        }
+
+        return result;
+    }
 
     pub async fn run(&mut  self, state: &mut state::StateSession) -> bool{
         while let Some(mut current_stack) = self.stack.pop() {
             let instructions = std::mem::take(&mut current_stack.instructions);
-            for instruction in instructions.iter() {
-                let mut resolved: Vec<Vec<u8>> = Vec::new();
-                for operand in instruction.operands.iter() {
-                    resolved.push(
-                        self.resolve(operand, &mut current_stack, state)
-                    );
-                }
-                let mut success = false;
-                match instruction.operation.as_str(){
-                    "ISSUE" => {
-                        success = self.issue(&resolved, state).await;
-                    },
-                    "CASH" => {
-                        success = self.transfer(&resolved, state).await;
-                    }
-                    "GSET" => {
-                        success = self.set_global(&resolved).await;
-                    }
-                    "RETURN" => {
-                        return true
-                    }
-                    
-                    _ => {
-                        success = false
-                    }
-                }
-                if !success{
+            println!("Instructions: {}", instructions.len());
+            let mut pos = 0 as usize;
+            while pos < instructions.len(){
+                let mut instruction = instructions.get(pos).unwrap();
+                let success = self.execute_instruction(&instruction, state, &mut current_stack).await;
+                if success.is_none() && instruction.operation.as_str() != "JUMP"{
                     println!("Failed at: {}", instruction.operation.as_str());
+                    return false
+                }
+                else if !success.is_none() && instruction.operation.as_str() == "JUMP"{
+                    pos = u64::from_le_bytes(success.unwrap()[..8].try_into().unwrap()) as usize;
+                }
+                else{
+                    pos = pos+1;
                 }
             }
         }
-        println!("Executed!");
-        return false
+        return true
     }
 
 
@@ -218,7 +362,7 @@ impl Execution{
     }
 
     pub fn load_executable(executable_encoded: Vec::<u8>) -> Execution{
-        println!("Loading executable bytecode: {}", hex::encode(&executable_encoded));
+        ////println!("Loading executable bytecode: {}", hex::encode(&executable_encoded));
         let executable = proto_bufs::ExecutableFrame::decode(&(executable_encoded)[..]).unwrap();
         let mut main_frame = Frame{
             memory: MemorySpace{
@@ -229,12 +373,15 @@ impl Execution{
             instructions: executable.instructions
         };
         let execution = Execution{
-            executable: "GovtOfIndia[CODE]=1234".to_string(),
-            entity: "GovtOfIndia".to_string(),
+            cost: 0,
+            executable: "TestUser1[CODE]=1234".to_string(),
+            entity: "TestUser1".to_string(),
             inputs: Vec::new(),
             stack: vec![main_frame.clone()],
-            generated: Vec::new(),
-            caller: "test_caller".to_string(),
+            generated: HashMap::new(),
+            resources: HashMap::new(),
+            loaded: HashMap::new(),
+            caller: "TestUser2".to_string(),
             memory: MemorySpace{
                 vars: HashMap::new()
             },
@@ -242,75 +389,25 @@ impl Execution{
         };
         return execution
     }
-    pub async fn load_call(call: Resource) -> Execution{
+    pub async fn load_call(call: &Resource) -> Option<Execution>{
         let executable_grid = call.get_text_field("executable");
         let caller = call.get_text_field("caller");
-        let executable = Resource::find_resource(executable_grid).await;
+        let executable = Resource::find_resource(executable_grid.clone()).await;
         if executable.is_none(){
             println!("Executable grid not valid!");
+            return None;
         }
+        println!(
+            "Executable call\n{}\nby {}",
+            executable_grid.clone(),
+            caller
+        );
         let mut execution = Execution::load_executable_resource(executable.unwrap());
         execution.caller = caller;
-        return execution;
+        return Some(execution);
     }
 
 
-
-
-    pub fn resolve(&mut self, operand: &Operand, frame: &mut Frame, state: &mut state::StateSession) -> Vec::<u8>{
-        match operand.r#type.as_str(){
-            "D" => {
-                return operand.key.clone()
-            }
-
-            "M" => {
-                let stack_var = frame.memory.vars.get(&operand.key);
-                if !stack_var.is_none(){
-                    return stack_var.unwrap().value.clone();
-                }
-                let global_var = self.memory.vars.get(&operand.key);
-                if global_var.is_none(){
-                    println!("Variable not initalized!");
-                    return Vec::new();
-                }
-                return global_var.unwrap().value.clone()
-            }
-
-            "R" => {
-                return state.rand()
-            }
-
-            "E" => {
-                let attribite = String::from_utf8_lossy(&operand.key).into_owned();
-                match attribite.as_str(){
-                    "geid" => {
-                        println!("Reading caller entity!");
-                        return self.caller.clone().into_bytes();
-                    }
-                    _=>{}
-                }
-                
-            }
-
-            _ => {
-                return Vec::new();
-            }
-        }
-        return Vec::new(); 
-    }
-
-
-    pub async fn issue(&mut self, operands: &Vec::<Vec::<u8>>, state: &mut state::StateSession) -> bool{
-        println!(
-            "issuing new resource\n{}",
-            String::from_utf8_lossy(&operands[0]).into_owned()
-        );
-        let resource_type = String::from_utf8_lossy(&operands[0]).into_owned();
-        let new_resource = Resource::create_resource(&self.entity, &resource_type);
-        let identifier_key = hex::encode(state.rand());
-        println!("Created new resouece: {}", new_resource.payload.as_ref().unwrap().grid);
-        true
-    }
    
 
     pub async fn execute(&mut  self, state: &mut state::StateSession){
@@ -319,105 +416,41 @@ impl Execution{
             return
         }
         for balance in self.balances.iter(){
-            println!("Balance\t{}\t{}", balance.geid, balance.balance);
             state.get_geid(&balance.geid, Some(balance.balance)).await;
         }
-        println!("Contract executed successfully!");
+        for (pos, generated) in self.generated.clone(){
+            println!("Generated: {}", generated.payload.as_ref().unwrap().grid);
+        }
+        self.text();
         return;
-
     }
 
-    pub async fn transfer(&mut self, operands: &Vec::<Vec::<u8>>, state: &mut state::StateSession) -> bool{
-
-        let reciever =  String::from_utf8_lossy(&operands[0]).into_owned();
-        let sender = self.entity.clone();
-        let amt = u64::from_le_bytes(operands[1].clone()[..8].try_into().unwrap());
-        println!("Transferring {}", amt);
-        let balance = self.get_balance(&sender).await;
-        if balance < amt{
-            return false;
-        }
-
-        let sender_balance = self.update_balance(&sender, false, amt, state).await;
-        let reciever_balance = self.update_balance(&reciever, true, amt, state).await;
-        let identifier_raw = state.rand();
-        let identifier = hex::encode(identifier_raw);
-        let generated_transaction = cash::Cash::create_transaction(&self.entity, &reciever, amt, &identifier).await;
-        println!("New transaction: {}", generated_transaction.payload.as_ref().unwrap().grid);
-        self.generated.push(
-            generated_transaction
-        );
-        true
-    }
-
-    pub async fn set_global(&mut self, operands: &Vec::<Vec::<u8>>) -> bool{
-        let new_var = MemoryVar{
-            key: operands[0].clone(),
-            r#type: String::from_utf8_lossy(&operands[1]).into_owned(),
-            value: operands[2].clone()
-        };
-        self.memory.vars.insert(operands[0].clone(), new_var);
-        true
-    }
-
-    pub async fn set_local(&mut self, operands: &Vec::<Vec::<u8>>, frame: &mut Frame) -> bool{
-        let new_var = MemoryVar{
-            key: operands[0].clone(),
-            r#type: String::from_utf8_lossy(&operands[1]).into_owned(),
-            value: operands[2].clone()
-        };
-        frame.memory.vars.insert(operands[0].clone(), new_var);
-        true
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    pub async fn get_balance(&mut self, entity: &str) -> u64{
-        for balance in self.balances.iter(){
-            if balance.geid == entity{
-                return balance.balance
+    pub fn arithmethic(&mut self, operation: &str, operands: &Vec::<Vec::<u8>>) -> Option<Vec::<u8>>{
+        let mut int_operands: Vec::<u64> = Vec::new();
+        for operand in operands.iter(){
+            if operand.len() < 8 {
+                return None; // or handle error state
             }
+            int_operands.push(u64::from_le_bytes(operand.clone()[..8].try_into().unwrap()));
         }
-        let record = state::read_record(entity).await;
-        if record.is_none(){
-            return 0
-        }
-        let balance = record.as_ref().unwrap().balance;
-        self.balances.push(
-            Balance{
-                geid: entity.to_string(),
-                balance: balance
+        let mut result = 0;
+        match operation{
+            "+" => {
+                result = int_operands[0]+int_operands[1]
             }
-        );
-        return record.as_ref().unwrap().balance;
-    }
+            "-" => {
+                result = int_operands[0]-int_operands[1]
+            }
+            "*" => {
+                result = int_operands[0]*int_operands[1]
+            }
+            "/" => {
+                result = int_operands[0]/int_operands[1]
+            }
 
-    pub async fn update_balance(&mut self, entity: &str, incoming: bool, amt: u64, state: &mut state::StateSession) -> u64{
-        println!("Sending to {}", entity);
-        self.get_balance(entity).await;
-        for balance in self.balances.iter_mut(){
-            if balance.geid == entity{
-                if incoming{
-                    balance.balance = balance.balance + amt;
-                }
-                else{
-                    balance.balance = balance.balance - amt;
-                }
-                return balance.balance
-            }
+            _ => {}
         }
-        return 0
+        return Some(result.to_le_bytes().to_vec());
     }
 }
 

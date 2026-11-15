@@ -121,7 +121,7 @@ impl Header{
     }
 
     pub fn add_header(pos: u32, merkle_root:Vec::<u8>, filter: Vec::<u64>, hash_nums:u32, resources_total: u32, previous_hash: Option<Vec::<u8>>) -> Header{
-        //println!("Adding header");
+        //////println!("Adding header");
         let new_filter = BloomFilter::from_vec(filter.clone())
             .seed(&12345u128)
             .hashes(hash_nums.clone());
@@ -142,8 +142,8 @@ impl Header{
 
 
     pub async fn load_database(mut header: &mut Header) -> &mut Header{
-        //println!("DBLOAD");
-        //println!("LOADED");
+        //////println!("DBLOAD");
+        //////println!("LOADED");
         
         let merkle_encoded = hex::encode(header.merkle_root.clone());
         
@@ -152,31 +152,18 @@ impl Header{
         let db_dir = args[2].clone();
         let file_exists = Path::new(format!("{db_dir}/{merkle_encoded}.db").as_str()).exists();
         if file_exists == false{
-            println!("Error: file not in dbs");
+            ////println!("Error: file not in dbs");
             panic!("error message {}", format!("{db_dir}/{merkle_encoded}.db"));
         }
-        let new_connection = Connection::open(format!("{db_dir}/{merkle_encoded}.db")).await.expect("ASS");
+        let new_connection = Connection::open(format!("{db_dir}/{merkle_encoded}.db")).await.expect("error");
         header.db_conn = Some(new_connection);
-        //println!("Database loaded");
+        //////println!("Database loaded");
         return header
     }
 
-    pub async fn load_database_header(mut target: &Header){
-        //println!("DBLOAD");
-
-    }
 
 
-    pub async fn check_headers(){
-        //println!("Checking...");
-        let header_list = HeadersList.read().await;
-        let header_list_clone = header_list.clone();
-        drop(header_list);
-        for header in header_list_clone.iter(){
-            
 
-        }
-    }
 
     pub fn check_bloom(&self, grid: String) -> bool{
         self.bloom.clone().unwrap().contains(&grid)
@@ -189,7 +176,7 @@ impl Header{
             Header::load_database(header).await;
         }
         else{
-            //println!("Using loaded database");
+            //////println!("Using loaded database");
         }
         let resource = header.clone().db_conn.clone().unwrap()
             .call(move|conn| {
@@ -366,14 +353,13 @@ impl Header{
                         for sibling in sibling_nodes{
                             proof_chain.push(sibling.clone().hash);
                         }
-
                     }
                     proofs.push(proof_chain.clone());
                     let result = Resource{
                         payload: people[0].payload.clone(),
                         signatures: Vec::new(),
                         proof: vec![MerkleProof{
-                            r#type: format!("{}", header_clone.num),
+                            r#type: format!("+"),
                             hashes: proofs[0].clone(),
                             block: header_clone.num,
                             grid: String::from("")
@@ -417,7 +403,7 @@ impl Header{
 
 
     pub async fn push_to_list(&self) {
-        //println!("REQQQ");
+        //////println!("REQQQ");
         let mut lock = HeadersList.write().await;
         lock.push(self.clone());
         drop(lock)
@@ -425,9 +411,9 @@ impl Header{
 
     pub async fn read_list() {
         let header_list = HeadersList.read().await;
-        //println!("READDDDDDDDDDDDDD");
+        //////println!("READDDDDDDDDDDDDD");
         for header in header_list.iter(){
-            //println!("Found header HEAD");
+            //////println!("Found header HEAD");
         }
     }
 

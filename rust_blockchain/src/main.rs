@@ -13,9 +13,7 @@ mod utils;
 mod headers;
 mod resources;
 mod mempool;
-mod cryptography;
 mod client;
-mod rules;
 mod signatures;
 mod entity;
 mod cache;
@@ -36,7 +34,6 @@ use proto_bufs::HostMessage as HostMessage;
 mod vm;
 use tokio::sync::mpsc::{Sender, Receiver};
 use proto_bufs::Signature as Signature;
-mod mempool_actions;
 use std::sync::Arc;
 use crate::resources::ChainResource;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
@@ -73,7 +70,7 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                 // 'bytes' is a BytesMut containing EXACTLY one full message
                 match HostMessage::decode(&bytes[..]) {
                     Ok(deserialized_message) => {
-                        println!("Decoded!");
+                        ////println!("Decoded!");
                         // Success! Safely forward or process your message here
                         let cloned_deserialized_message = deserialized_message.clone();
                         let cloned_chain_message = ChainMessage{
@@ -86,15 +83,15 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                         };
                         match Process.message.r#type.as_str(){
                             "REQUEST"=>{
-                                    println!("Got request");
+                                    ////println!("Got request");
                                     let process_clone = Process.clone();
                                     let message_string = &process_clone.message.message; 
 
                                     // 2. Pass the cloned String directly into the task (No need for as_bytes conversion here)
                                     let grid_clone = message_string.clone();
-                                    //println!("Findind request");
+                                    //////println!("Findind request");
                                     let grid_result = Resource::find_resource(String::from_utf8_lossy(&grid_clone).into_owned());
-                                    //println!("Returning request");
+                                    //////println!("Returning request");
                                     let mut host_message = proto_bufs::HostMessage{
                                         r#type: String::from("RESOURCE"),
                                         success:true,
@@ -102,7 +99,7 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                                     };
                                     let grid_final = grid_result.await;
                                     if grid_final.is_none() == false{
-                                        //println!("Found {:?}", grid_final);
+                                        //////println!("Found {:?}", grid_final);
                                         cache::Cache::add_cache_db(String::from_utf8_lossy(&grid_clone).into_owned()).await;
                                         let mut resource_buf = Vec::<u8>::new();
                                         let mut buf = Vec::<u8>::new();
@@ -127,20 +124,20 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                             },
 
                             "HOST:REQUEST"=>{
-                                //println!("Request from hoist");
+                                //////println!("Request from hoist");
                                 let request_protobuf = proto_bufs::ResourceRequest::decode(&Process.message.message[..]).unwrap();
                                 let response_protobuf = client::Client::get_resources(request_protobuf).await;
                                 let mut buf = Vec::<u8>::new();
                                 response_protobuf.encode(&mut buf).unwrap();
                                 let encoded = hex::encode(&buf);
-                                //println!("SENDING: {}", encoded);
+                                //////println!("SENDING: {}", encoded);
                                 task::spawn(async move {
                                     send_length_prefixed(&mut write_half, encoded.as_str()).await;
                                 });
                                 break;
                             },
                             "HOST:REVOKE"=>{
-                                //println!("Request from hoist");
+                                //////println!("Request from hoist");
 
                                 let mut buf = Vec::<u8>::new();
                                 let encoded = hex::encode(&buf);
@@ -165,7 +162,7 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                             },
             
                             "STATUS"=>{
-                                //println!("STATUS");
+                                //////println!("STATUS");
 
 
                                 let duration = Duration::from_secs(1);
@@ -173,7 +170,7 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                                 let mut block_count = 0;
                                 match timeout(duration, resources::ResourcePool.read()).await {
                                     Ok(lock) => {
-                                        //println!("Pooled resources: {}", lock.len());
+                                        //////println!("Pooled resources: {}", lock.len());
                                         resource_count = lock.len();
 
                                     },
@@ -181,12 +178,12 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                                 }
                                 match timeout(duration, headers::HeadersList.read()).await {
                                     Ok(lock) => {
-                                        //println!("Block count: {}", lock.len());
+                                        //////println!("Block count: {}", lock.len());
                                         block_count = lock.len();
                                         for block in lock.iter(){
                                             let header_encoded = hex::encode(&utils::get_hash(block.to_bytes()));
                                             let previous_encoded = hex::encode(&(block.previous_hash.clone().unwrap()));
-                                            //println!("Block (size: {}): {}\nPrevious: {}", block.resources_total, header_encoded, previous_encoded);
+                                            //////println!("Block (size: {}): {}\nPrevious: {}", block.resources_total, header_encoded, previous_encoded);
                                         }
 
                                     },
@@ -208,7 +205,7 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                             }
                             _ =>{
                                 if tx_prc.send(Process).await.is_err() {
-                                    ////////////////println!("Consumer loop shut down. Exiting producer loop.");
+                                    ////////////////////println!("Consumer loop shut down. Exiting producer loop.");
                                     break;
                                 }
                                 task::spawn(async move {
@@ -220,7 +217,7 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                         }
                     }
                     Err(e) => {
-                        println!("Failed to decode message despite full frame: {:?}", e);
+                        ////println!("Failed to decode message despite full frame: {:?}", e);
                         break; // Corrupted data structure, close connection
                     }
                 }
@@ -230,11 +227,11 @@ async fn handle_client(stream: TcpStream, tx_prc: Sender<PROCESS>) {
                 break;
             }
             Ok(None) => {
-                println!("Client cleanly disconnected.");
+                ////println!("Client cleanly disconnected.");
                 break;
             }
             Err(_timeout) => {
-                println!("Client timed out after 60 seconds.");
+                ////println!("Client timed out after 60 seconds.");
                 break;
             }
             _ => {}
@@ -250,11 +247,11 @@ pub async fn send_length_prefixed(socket: &mut tokio::net::tcp::OwnedWriteHalf, 
     // 1. Send the length prefix (Big-Endian network byte order)
     socket.write_u32(len).await?;
     let encoded = hex::encode(&bytes);
-    //////println!("RAw daa: {}", encoded);
+    //////////println!("RAw daa: {}", encoded);
     // 2. Send the actual payload data
     socket.write_all(bytes).await?;
     socket.flush().await?;
-    //////println!("SENDING DATA");
+    //////////println!("SENDING DATA");
     Ok(())
 }
 
@@ -271,11 +268,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let signing_key = self_node::sign_key().await;
     let port_num = &args[1];
 
+    let self_message: Vec::<u8> = "greetings".bytes().collect();
+    let self_sign = self_node::sign_resource(self_message.clone()).await;
     
 
     let addr = format!("127.0.0.1:{}", port_num);
     let listener = TcpListener::bind(addr).await?;
-    ////////////////println!("Async Server listening on port {}", port_num);
+    ////////////////////println!("Async Server listening on port {}", port_num);
 
     let (tx_msg, mut rx_msg) = mpsc::channel(100);
     let (tx_prc, mut rx_prc) = mpsc::channel(100);
@@ -283,12 +282,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state::initialize_state().await;
 
     let mut new_session = state::StateSession::start_session().await;
-    println!("Session root: {}", hex::encode(new_session.get_root()));
+
+    println!("Session root: {}", hex::encode(new_session.get_root().await));
     let mut new_vm = vm::Execution::start();
     new_vm.execute(&mut new_session).await;
-    println!("rand: {:?}", new_session.rand());
-    println!("rand: {:?}", new_session.rand());
-    println!("rand: {:?}", new_session.rand());
+
     //new_session.commit().await;
     //new_session.get_geid(&crate::get_geid().to_string(), Some(100 as u64)).await;
     //new_session.commit().await;
@@ -296,7 +294,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state::read_record(&crate::get_geid().to_string().to_string()).await;
 
 
-    println!("Second tine....");
 
     let tx_msg_1 = tx_msg.clone();
     task::spawn(async move {
@@ -308,7 +305,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         start_p2p(rx_msg, tx_prc_1).await;
     });
     
-    ////////////////println!("P2P server started");
+    ////////////////////println!("P2P server started");
     
 
     loop {

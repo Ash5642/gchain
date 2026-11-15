@@ -234,7 +234,9 @@ class Call(MessageHandler):
                 "caller":self.auth['entity'].gid
             }
         )
+        core_messages.push_resource(new_signature_grid.gid, session = self.session)
         print(new_signature_grid.gid)
+
         return {
             "grid":new_signature_grid.gid
         }

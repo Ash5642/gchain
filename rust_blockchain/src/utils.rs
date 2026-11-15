@@ -10,7 +10,7 @@ use std::env;
 use std::fs::File;
 use std::io::Write;
 use crate::resources;
-use crate::mempool_actions;
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::{Mutex, OnceLock};
@@ -56,7 +56,7 @@ pub fn get_hash(mut item:Vec::<u8>) -> Vec::<u8>{
 
 
 pub fn check_merkle(mut proof: Vec::<Vec::<u8>>) -> bool{
-    ////////println!("Checking merkle proof");
+    ////////////println!("Checking merkle proof");
 
     for i in (0..proof.len()-1).step_by(2) {
         let combined = [proof[i].clone(), proof[i+1].clone()].concat();
@@ -74,7 +74,7 @@ pub fn check_merkle(mut proof: Vec::<Vec::<u8>>) -> bool{
         }
         
     }
-    ////////println!("Merkle tree valid");
+    ////////////println!("Merkle tree valid");
     return true;
 }
 
@@ -82,17 +82,17 @@ pub fn check_merkle(mut proof: Vec::<Vec::<u8>>) -> bool{
 
 pub async fn check_resource(grid: String) -> Result<(bool)>{
     let mut commit_list = mempool::MEMPOOL.read().await;
-    ////println!("Checking mempool");
+    ////////println!("Checking mempool");
     for item in commit_list.iter(){
         if item.payload.as_ref().unwrap().grid == grid{
-            //println!("Found in mempooo");
+            //////println!("Found in mempooo");
             return Ok(true)
         }
     }
     let mut header_list = headers::HeaderList.read().await;
     for header in header_list.iter(){
         let bloom_match = header.check_bloom(grid.clone());
-        ////println!("QUICL {}", bloom_match);
+        ////////println!("QUICL {}", bloom_match);
         let encoded = hex::encode(header.merkle_root.clone());
         let grid_clone = grid.clone();
         let block_load = task::spawn(async move {
@@ -103,7 +103,7 @@ pub async fn check_resource(grid: String) -> Result<(bool)>{
                 
                 let db_result = result.await;
                 if db_result.unwrap() == true{
-                    //println!("Found in database");
+                    //////println!("Found in database");
                     return Ok(true);
                 }
             }
@@ -151,7 +151,7 @@ pub fn xor_bit_distance(a: &[u8], b: &[u8]) -> u32 {
 
 pub async fn create_dump(){
     let commit_global_list = resources::ResourcePool.write().await;
-    println!("Starting dump!");
+    ////println!("Starting dump!");
     let args: Vec<String> = env::args().collect();
     let db_dir = args[2].clone();
     let dump_file_name = format!("{db_dir}/dump.txt");

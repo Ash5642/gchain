@@ -53,12 +53,12 @@ pub struct DBResult {
 
 async fn setup_database() -> Result<()> {
     if GLOBAL_DB.get().is_none() {
-        //////////////////println!("Database is not initialized yet!");
+        //////////////////////println!("Database is not initialized yet!");
         let conn = Connection::open_in_memory().await?;
         GLOBAL_DB.set(conn).expect("Failed to set global DB");
         
     }else{
-        //////////////////println!("Database is initialized!");
+        //////////////////////println!("Database is initialized!");
         return Ok(())
     }
     let result = db()
@@ -145,9 +145,9 @@ pub async fn create_block_db(mut resources:Vec::<Resource>, mut merkle_root: Str
             };
             for item in resources{
                 if let Some(inner) = &item.payload {
-                    ////println!("INSERTING: {}", inner.grid);
+                    ////////println!("INSERTING: {}", inner.grid);
                     if inner.action == "REVOKE"{
-                        //////////////////println!("DBREVOKEIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIi");
+                        //////////////////////println!("DBREVOKEIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIi");
                     }
                     let name_clone = inner.grid.clone();
                     conn.execute(
@@ -156,7 +156,7 @@ pub async fn create_block_db(mut resources:Vec::<Resource>, mut merkle_root: Str
                     )?;
                     if let fields = &inner.fields {
                         for field in fields{
-                            //////////////////println!("Nested field value: {}", field.key);
+                            //////////////////////println!("Nested field value: {}", field.key);
                             conn.execute(
                                 "INSERT INTO fields (type, grid, key, value, nonce) VALUES (?1, ?2, ?3, ?4, ?5)",
                                 params![
@@ -176,13 +176,13 @@ pub async fn create_block_db(mut resources:Vec::<Resource>, mut merkle_root: Str
             for level in merkle_tree{
                 for node in level{
                     let encoded = hex::encode(&node.hash);
-                    ////////println!("LEAF {:?}", node.leaf);
+                    ////////////println!("LEAF {:?}", node.leaf);
                     let mut parent_node:Option<Vec::<u8>> = None;
                     if node.parent.is_none() == false{
                         parent_node = Some(node.clone().parent.unwrap());
-                        ////////println!("PARENT: {:?}", parent_node.clone());
+                        ////////////println!("PARENT: {:?}", parent_node.clone());
                     
-                        ////////println!("DONE PARENT");
+                        ////////////println!("DONE PARENT");
                         conn.execute(
                             "INSERT INTO merkle (value, grid, type, parent) VALUES (?1, ?2, ?3, ?4)",
                             params![
@@ -195,7 +195,7 @@ pub async fn create_block_db(mut resources:Vec::<Resource>, mut merkle_root: Str
                             ],
                         )?;
                     }else{
-                        ////////println!("DONE ORPHAN");
+                        ////////////println!("DONE ORPHAN");
                         conn.execute(
                             "INSERT INTO merkle (value, grid, type) VALUES (?1, ?2, ?3)",
                             params![
@@ -336,10 +336,10 @@ pub async fn check_resource(grid: String, db_name: String) -> Result<(bool)> {
 
 
             if people.len() == 0{
-                ////println!("Checked");
+                ////////println!("Checked");
                 return Ok(false)
             }
-            ////println!("UNCHCEKC");
+            ////////println!("UNCHCEKC");
             return Ok(true);
             
         })
@@ -354,7 +354,7 @@ pub async fn check_resource(grid: String, db_name: String) -> Result<(bool)> {
 pub async fn backup_memory_db_async<P: AsRef<Path>>(conn: &Connection, dest_path: P) -> Result<()> {
     // 1. Convert P into a standard path reference safely
     let path_ref = dest_path.as_ref();
-    //////////////////println!("FOUT: {:?}", path_ref);
+    //////////////////////println!("FOUT: {:?}", path_ref);
     // 2. Convert to a string for SQLite execution
     let path_str = path_ref.to_string_lossy().into_owned();
 
@@ -368,7 +368,7 @@ pub async fn backup_memory_db_async<P: AsRef<Path>>(conn: &Connection, dest_path
         Ok(())
     })
     .await?;
-    //println!("SAVEEEE");
+    //////println!("SAVEEEE");
     Ok(())
 }
 
@@ -416,7 +416,7 @@ pub async fn get_grid(item_name:String) -> Result<()> {
         })
         .await?;
 
-        //////////////////println!("In DB:{:?}", resource);
+        //////////////////////println!("In DB:{:?}", resource);
         
 
 
@@ -425,15 +425,15 @@ pub async fn get_grid(item_name:String) -> Result<()> {
 
 pub async fn get_resource2(item_name:String, merkle_root:String) -> Result<()>{
 
-    //////////////////println!("Loading DV");
+    //////////////////////println!("Loading DV");
     let conn = Connection::open(format!("dbs/{merkle_root}.db")).await?; 
-    //////////////////println!("Loaded DV");
+    //////////////////////println!("Loaded DV");
     // Execute queries using async methods
     let resource = conn
     .call(move |conn| {
-        //////////////////println!("FFFFFFFF DV");
+        //////////////////////println!("FFFFFFFF DV");
         let mut stmt = conn.prepare("SELECT gid, type, action FROM global_id where gid = $1")?;
-        //////////////////println!("FFFHFHJBFUUYTgyugggg DV");
+        //////////////////////println!("FFFHFHJBFUUYTgyugggg DV");
         let mut resource = stmt
             .query_map([&item_name], |row| {
                 Ok(
@@ -449,19 +449,19 @@ pub async fn get_resource2(item_name:String, merkle_root:String) -> Result<()>{
             .collect::<std::result::Result<Vec<Payload>, rusqlite::Error>>()?;
             
         
-        //////////////////println!("FHBUHFUFHu DV");
+        //////////////////////println!("FHBUHFUFHu DV");
         Ok(resource)
     })
     .await?;
-    //////////////////println!("DB: {:?}", resource);
-    //////////////////println!("Exiting DV");
+    //////////////////////println!("DB: {:?}", resource);
+    //////////////////////println!("Exiting DV");
 
     Ok(())
 }
 
 
 pub async fn add_block_db(head:BLOCKHEAD) -> Result<()> {
-    //////println!("ADDING B:OCK");
+    //////////println!("ADDING B:OCK");
     // Open a persistent SQLite file asynchronously
     let args: Vec<String> = env::args().collect();
     let db_dir = args[2].clone();
@@ -473,10 +473,10 @@ pub async fn add_block_db(head:BLOCKHEAD) -> Result<()> {
         last_block_encoded = Vec::new()
     }
     else{
-        //println!("NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN");
+        //////println!("NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN");
         last_block_encoded = last_block.unwrap().clone().to_protobuf();
     }
-    //println!("Last element: {:?}", commit_list.last());
+    //////println!("Last element: {:?}", commit_list.last());
 
     // Execute queries using .call()
     conn.call(move|conn| {
@@ -499,7 +499,7 @@ pub async fn add_block_db(head:BLOCKHEAD) -> Result<()> {
             .iter()
             .flat_map(|&x| x.to_ne_bytes()) // Use to_be_bytes() or to_le_bytes() for specific endianness
             .collect();
-        //println!("Inserting {:?}", commit_list);
+        //////println!("Inserting {:?}", commit_list);
         conn.execute(
             "INSERT INTO blocks (merkle_root, bloom, filter_num) VALUES (?1, ?2, ?3)",
             params![head.merkle, u8_vec, head.bloom.num_hashes],
@@ -518,11 +518,11 @@ pub async fn load_blocks() -> Result<()> {
     // 1. Open the database file from storage asynchronously
     let args: Vec<String> = env::args().collect();
 
-    println!("Database path: {}", args[2]);
+    ////println!("Database path: {}", args[2]);
     let db_dir = args[2].clone();
     let conn = Connection::open(format!("{db_dir}/blocks.db")).await?;
     let mut commit_list = HEAD_LIST.write().await;
-    //println!("Loading headers");
+    //////println!("Loading headers");
     let header_result = conn.call(move|conn| {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS blocks (
@@ -540,7 +540,7 @@ pub async fn load_blocks() -> Result<()> {
             )",
             [],
         )?;
-        //println!("LOADFFFDDDD");
+        //////println!("LOADFFFDDDD");
         let mut header_pos = 0;
         let mut stmt = conn.prepare("SELECT merkle_root, bloom, filter_num, resource_count, last, height FROM blocks")?;
         let mut header_result = stmt
@@ -569,9 +569,9 @@ pub async fn load_blocks() -> Result<()> {
         Ok(header_result)
     })
     .await?;
-    //println!("DBLOAD SUCCESS");
+    //////println!("DBLOAD SUCCESS");
     for header in header_result{
-        //println!("HEHEHEHEHE");
+        //////println!("HEHEHEHEHE");
         let header_merkle_encoded = hex::encode(&header.merkle_root);
         println!("{}\t{}\t{}", header.num, header_merkle_encoded, header.resources_total);
         task::spawn(async move {
@@ -581,15 +581,15 @@ pub async fn load_blocks() -> Result<()> {
     task::spawn(async move {
         headers::Header::read_list().await;
     }).await;
-    //println!("Continuing");
+    //////println!("Continuing");
     conn.close().await?;
     Ok(())
 }
 
 pub async fn add_cache_db(grid: String) -> Result<()> {
-    //////println!("ADDING B:OCK");
+    //////////println!("ADDING B:OCK");
     // Open a persistent SQLite file asynchronously
-    //println!("Updating cache list");
+    //////println!("Updating cache list");
     let args: Vec<String> = env::args().collect();
     let db_dir = args[2].clone();
     let conn = Connection::open(format!("{db_dir}/cached.db")).await?;

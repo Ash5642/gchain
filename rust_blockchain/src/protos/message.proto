@@ -226,11 +226,13 @@ message Routine{
 message Operand{
     string type = 1;
     bytes key = 2;
+    repeated Operand args = 3;
 }
 
 message Instruction{
     string operation = 1;
     repeated Operand operands = 2;
+    Operand write = 3;
 }
 message ExecutableFrame{
     repeated Instruction instructions = 1;

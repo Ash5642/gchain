@@ -52,9 +52,9 @@ impl headers::Header{
             };
             nodes[0].push(leaf);
             let _encoded = hex::encode(&result);
-            ////////////////println!("hash {}: {}", i, encoded);   
+            ////////////////////println!("hash {}: {}", i, encoded);   
         }
-        //println!("Merkle proofs generated!");
+        //////println!("Merkle proofs generated!");
         loop{
             if let Some(top_wrapped) = nodes.last_mut() {
                 let top = (*top_wrapped).clone();
@@ -100,10 +100,10 @@ impl headers::Header{
             let mut revoke_str: String;
             if resource_cloned.payload.as_ref().unwrap().r#type == "REVOKE"{
                 let revoked_grid_string = resource_cloned.get_text_field("grid");
-                println!("REV {}", revoked_grid_string);
+                ////println!("REV {}", revoked_grid_string);
                 let revoked_grids: Vec::<&str> = revoked_grid_string.split(";").collect();
                 for revoked_grid in revoked_grids{
-                    println!("REVOKING SUB {}", revoked_grid);
+                    ////println!("REVOKING SUB {}", revoked_grid);
                     revoke_str = format!("-{}", revoked_grid);
                     filter.insert(&revoke_str);
                 }
@@ -118,7 +118,7 @@ impl headers::Header{
 
     pub async fn add_block_db(head:headers::Header) -> Result<()> {
         let args: Vec<String> = env::args().collect();
-        println!("SAVINGGBGJHUGHUGHGU HEAD to database!");
+        ////println!("SAVINGGBGJHUGHUGHGU HEAD to database!");
         let db_dir = args[2].clone();
         let conn = Connection::open(format!("{db_dir}/blocks.db")).await?;
         conn.call(move|conn| {
@@ -162,193 +162,29 @@ impl headers::Header{
         .await?;
         
         conn.close().await?;
-        println!("Header table updated.");
+        ////println!("Header table updated.");
         Ok(())
     }
 
-    pub async fn save_resources2(head:headers::Header, commit_list: Vec::<Resource>, depth: u32, merkle_tree: Vec::<Vec::<MerkleNode>>) -> Result<()> {
-        let merkle_encoded = hex::encode(&head.merkle_root);
-        let args: Vec<String> = env::args().collect();
-
-        println!("Database path: {}", args[2]);
-        let db_dir = args[2].clone();
-        let db_name = format!("{db_dir}/{merkle_encoded}.db");
-        let conn = Connection::open_in_memory().await?;
-        let base: i32 = 2;
-        println!("DB_PROCESSING");
-
-        conn.call(move|conn| {
-            //println!("DIIHUHIGDUYGDUYGDUGDUGDGDJDD");
-            conn.execute(
-                "CREATE TABLE global_id (
-                    gid   STRING PRIMARY KEY,
-                    type  STRING NULL DEFAULT 'RESOURCE',
-                    action STRING NULL DEFAULT 'ADD',
-                    nonce BYTES NULL
-                )",
-                [],
-            )?;
-            let _proofs: Vec::<Vec::<Vec::<u8>>> = Vec::new();
-            conn.execute(
-                "CREATE TABLE fields (
-                    type  STRING NULL DEFAULT 'RESOURCE',
-                    grid STRING,
-                    key STRING,
-                    value BLOB,
-                    nonce BLOB,
-                    
-                    FOREIGN KEY (grid) REFERENCES global_id(gid)
-                )",
-                [],
-            )?;
-            conn.execute(
-                "CREATE TABLE merkle (
-                    value BLOB PRIMARY KEY,
-                    type  STRING NULL DEFAULT 'ROOT',
-                    grid STRING,
-                    parent BLOB NULL,
-                    FOREIGN KEY (grid) REFERENCES global_id(gid)
-                )",
-                [],
-            )?;
-            conn.execute(
-                "CREATE TABLE revocation (
-                    parent STRING,
-                    grid STRING PRIMARY KEY,
-                    FOREIGN KEY (parent) REFERENCES global_id(gid)
-                )",
-                [],
-            )?;
-            for i in 0..(base as usize).pow(depth){
-                let item = commit_list[i].clone();
-                if let Some(inner) = &item.payload {
-                    if inner.r#type == "REVOKE"{
-                        println!("REVOKING: {}", inner.grid);
-                    }
-                    
-                    let _name_clone = inner.grid.clone();
-                    match conn.execute(
-                        "INSERT INTO global_id (gid, type, action, nonce) VALUES (?1, ?2, ?3, ?4)",
-                        params![inner.grid, inner.r#type, inner.action, inner.nonce],
-                    ){
-                        Ok(_) => {},
-                        Err(err) => println!("Rusqlite error: {}", err), // Prints the error message
-                    }
-                
-                    if inner.r#type == "REVOKE"{
-                        let revoked_grid_string = item.get_text_field("grid");
-                        let revoked_grids: Vec::<&str> = revoked_grid_string.split(";").collect();
-                        println!("RA");
-                        for revoked_grid in revoked_grids{
-                            
-                            match conn.execute(
-                                "INSERT INTO revocation (grid, parent) VALUES (?1, ?2)",
-                                params![revoked_grid.to_string(), inner.grid],
-                            ) {
-                                Ok(_) => println!("Success"),
-                                Err(err) => println!("Rusqlite error: {}", err), // Prints the error message
-                            }
-                        }
-                        println!("RB");
-                    }
-                    if let fields = &inner.fields {
-                        for field in fields{
-                            //////////////////println!("Nested field value: {}", field.key);
-                            match conn.execute(
-                                "INSERT INTO fields (type, grid, key, nonce, value) VALUES (?1, ?2, ?3, ?4, ?5)",
-                                params![
-                                    field.r#type,
-                                    inner.grid,
-                                    field.key,
-                                    field.nonce,
-                                    field.value
-                                    
-                                ],
-                            ){
-                                Ok(_) => {},
-                                Err(err) => println!("Rusqlite error: {}", err), // Prints the error message
-                            }
-                        }
-                    }
-                }
-            }
-            for level in merkle_tree.iter(){
-                for node in level{
-                    let _encoded = hex::encode(&node.hash);
-                    ////////println!("LEAF {:?}", node.leaf);
-                    let mut parent_node:Option<Vec::<u8>> = None;
-                    if !node.parent.is_none(){
-                        parent_node = Some(node.clone().parent.unwrap());
-                        ////////println!("PARENT: {:?}", parent_node.clone());
-                    
-                        ////////println!("DONE PARENT");
-                        match conn.execute(
-                            "INSERT INTO merkle (value, grid, type, parent) VALUES (?1, ?2, ?3, ?4)",
-                            params![
-                                node.hash,
-                                node.leaf,
-                                String::from("NODE"),
-                                parent_node.clone()
-
-                                
-                            ],
-                        )
-                        {
-                            Ok(_) => {},
-                            Err(err) => println!("Rusqlite error: {}", err), // Prints the error message
-                        }
-                    
-                    }else{
-                        ////////println!("DONE ORPHAN");
-                        conn.execute(
-                            "INSERT INTO merkle (value, grid, type) VALUES (?1, ?2, ?3)",
-                            params![
-                                node.hash,
-                                node.leaf,
-                                String::from("NODE")
-
-                                
-                            ],
-                        )?;
-                    }
-
-                }
-            }
-
-
-            Ok(())
-        })
-        .await?;
-        println!("Saved: {} database!", db_name.clone());
-        //println!("SUCCESS!!!");
-        conn.call(move |raw_conn| {
-            raw_conn.execute("VACUUM main INTO ?1", [&db_name])?;
-            Ok(())
-        })
-        .await?;
-        println!("Saved to disk!");
-        conn.close().await?;
-        Ok(())
-    }
 
     pub async fn save_resources(head:headers::Header) -> Result<()> {
         let merkle_encoded = hex::encode(&head.merkle_root);
         let args: Vec<String> = env::args().collect();
         let mut commit_global_list = resources::ResourcePool.write().await;
-        println!("Before save: {}", commit_global_list.len());
+        ////println!("Before save: {}", commit_global_list.len());
         let to_remove_names: HashSet<String> = head.clone().resources.into_iter().map(|r| r.payload.as_ref().unwrap().grid.clone()).collect();
         commit_global_list.retain(|x| !to_remove_names.contains(&x.payload.as_ref().unwrap().grid));
-        println!("After save: {}", commit_global_list.len());
-        println!("Database path: {}", args[2]);
+        ////println!("After save: {}", commit_global_list.len());
+        ////println!("Database path: {}", args[2]);
         let db_dir = args[2].clone();
         let db_name = format!("{db_dir}/{merkle_encoded}.db");
         let conn = Connection::open_in_memory().await?;
         let _base: i32 = 2;
-        println!("DB_PROCESSING");
+        ////println!("DB_PROCESSING");
         let head_clone = head.clone();
 
         conn.call(move|conn| {
-            //println!("DIIHUHIGDUYGDUYGDUGDUGDGDJDD");
+            //////println!("DIIHUHIGDUYGDUYGDUGDUGDGDJDD");
             conn.execute(
                 "CREATE TABLE global_id (
                     gid   STRING PRIMARY KEY,
@@ -391,8 +227,9 @@ impl headers::Header{
             )?;
             for item in head.resources.iter(){
                 if let Some(inner) = &item.payload {
+                    println!("Adding: {}", inner.grid);
                     if inner.r#type == "REVOKE"{
-                        println!("REVOKING: {}", inner.grid);
+                        ////println!("REVOKING: {}", inner.grid);
                     }
 
                     if inner.r#type == "RECORD"{
@@ -411,9 +248,9 @@ impl headers::Header{
                     if inner.r#type == "REVOKE"{
                         let revoked_grid_string = item.get_text_field("grid");
                         let revoked_grids: Vec::<&str> = revoked_grid_string.split(";").collect();
-                        println!("RA");
+                        ////println!("RA");
                         for revoked_grid in revoked_grids{
-                            println!("INNER REVOKE: {}", revoked_grid);
+                            ////println!("INNER REVOKE: {}", revoked_grid);
                             match conn.execute(
                                 "INSERT INTO revocation (grid, parent) VALUES (?1, ?2)",
                                 params![revoked_grid.to_string(), inner.grid],
@@ -422,11 +259,11 @@ impl headers::Header{
                                 Err(err) => println!("Rusqlite error: {}", err), // Prints the error message
                             }
                         }
-                        println!("RB");
+                        ////println!("RB");
                     }
                     if let fields = &inner.fields {
                         for field in fields{
-                            //////////////////println!("Nested field value: {}", field.key);
+                            //////////////////////println!("Nested field value: {}", field.key);
                             match conn.execute(
                                 "INSERT INTO fields (type, grid, key, nonce, value) VALUES (?1, ?2, ?3, ?4, ?5)",
                                 params![
@@ -448,13 +285,13 @@ impl headers::Header{
             for level in head.merkle_tree.iter(){
                 for node in level{
                     let _encoded = hex::encode(&node.hash);
-                    ////////println!("LEAF {:?}", node.leaf);
+                    ////////////println!("LEAF {:?}", node.leaf);
                     let mut parent_node:Option<Vec::<u8>> = None;
                     if !node.parent.is_none(){
                         parent_node = Some(node.clone().parent.unwrap());
-                        ////////println!("PARENT: {:?}", parent_node.clone());
+                        ////////////println!("PARENT: {:?}", parent_node.clone());
                     
-                        ////////println!("DONE PARENT");
+                        ////////////println!("DONE PARENT");
                         match conn.execute(
                             "INSERT INTO merkle (value, grid, type, parent) VALUES (?1, ?2, ?3, ?4)",
                             params![
@@ -472,7 +309,7 @@ impl headers::Header{
                         }
                     
                     }else{
-                        ////////println!("DONE ORPHAN");
+                        ////////////println!("DONE ORPHAN");
                         conn.execute(
                             "INSERT INTO merkle (value, grid, type) VALUES (?1, ?2, ?3)",
                             params![
@@ -497,11 +334,11 @@ impl headers::Header{
         for resource in head_clone.resources.iter(){
             let entity = entity::Entity::get_entity(resource.clone().payload.unwrap().grid);
             let entity_geid = entity.get_geid();
-            println!("Updting balance for: {}", entity_geid);
+            ////println!("Updting balance for: {}", entity_geid);
             state_session.get_geid(entity_geid.as_str(), Some(160 as u64)).await;
         }
         state_session.commit().await;
-        //println!("SUCCESS!!!");
+        //////println!("SUCCESS!!!");
         conn.call(move |raw_conn| {
             raw_conn.execute("VACUUM main INTO ?1", [&db_name])?;
             Ok(())
@@ -525,16 +362,16 @@ impl headers::Header{
         let mut header_list = headers::HeadersList.write().await;
         let previous_hash: Vec::<u8>;
         if header_list.is_empty(){
-            //println!("Genesis block");
+            //////println!("Genesis block");
             previous_hash = Vec::new();
         }
         else{
             let last_header = header_list.last();
-            //println!("New block");
+            //////println!("New block");
             previous_hash = utils::get_hash(last_header.unwrap().to_bytes());
         }
         if commit_global_list.len() < 3{
-            println!("Not enough resources to confirm!");
+            ////println!("Not enough resources to confirm!");
         }
         let _last_header = header_list.last();
         let mut depth:u32 = 2;
@@ -550,7 +387,7 @@ impl headers::Header{
         );
         let mut new_session = state::StateSession::start_session().await;
         for i in 1..(base as usize).pow(depth){
-            println!("Adding {}", commit_global_list[i].payload.as_ref().unwrap().grid);
+            ////println!("Adding {}", commit_global_list[i].payload.as_ref().unwrap().grid);
             commit_list.push(commit_global_list[i].clone());
         }
         let mut nodes = headers::Header::generate_merkle(commit_list.to_vec());
@@ -586,15 +423,15 @@ impl headers::Header{
         for resource in resources.iter(){
             let entity = entity::Entity::get_entity(resource.clone().payload.unwrap().grid);
             let entity_geid = entity.get_geid();
-            println!("Updting balance for: {}", entity_geid);
+            ////println!("Updting balance for: {}", entity_geid);
             state_session.get_geid(entity_geid.as_str(), Some(160 as u64)).await;
         }
-        return state_session.get_root();
+        return state_session.get_root().await;
     }
 
     pub async fn generate_send_header(tx_msg: mpsc::Sender<proto_bufs::ChainMessage>){
         let new_header = headers::Header::generate_header(Vec::<u8>::new()).await;
-        println!("New header: {:?}", new_header);
+        ////println!("New header: {:?}", new_header);
         let merkle_encoded = hex::encode(new_header.merkle_root.clone());
         let args: Vec<String> = env::args().collect();
         let db_dir = args[2].clone();
@@ -616,7 +453,7 @@ impl headers::Header{
         let new_tx_msg = tx_msg.clone();
 
         if new_tx_msg.send(e_resp.clone().unwrap()).await.is_err() {
-            println!("Consumer loop shut down. Exiting producer loop.");
+            ////println!("Consumer loop shut down. Exiting producer loop.");
         }
     }
 
@@ -625,10 +462,10 @@ impl headers::Header{
         let generated_merkle = nodes.last_mut().unwrap()[0].hash.clone();
         let generated_state = headers::Header::state_generate(&header.resources).await;
         if generated_state == header.body.as_ref().unwrap().state_root{
-            println!("State updates valid!");
+            ////println!("State updates valid!");
         }
         else{
-            println!("SNDJDHJDFHDF");
+            ////println!("SNDJDHJDFHDF");
         }
         generated_merkle == header.body.as_ref().unwrap().merkle_root
     }

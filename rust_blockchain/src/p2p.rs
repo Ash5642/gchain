@@ -10,7 +10,7 @@ use std::fs;
 use std::env;
 use std::io;
 use crate::vm;
-use crate::mempool_actions;
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::{Mutex, OnceLock};
@@ -90,7 +90,7 @@ pub async fn start_p2p(mut rx_msg: Receiver<ChainMessage>, tx_prc: Sender<PROCES
     let mut commit_list = Vec::<Vote>::new();
     let mut has_voted = false;
     let mut my_val:Vec::<u8> = Vec::new();
-    ////////////////println!("P2p started");
+    //////////////////println!("P2p started");
     // 3. Initialize the Swarm with TCP, TLS/Noise, and Yamux multiplexing
     let mut swarm = libp2p::SwarmBuilder::with_new_identity()
         .with_tokio()
@@ -130,10 +130,10 @@ pub async fn start_p2p(mut rx_msg: Receiver<ChainMessage>, tx_prc: Sender<PROCES
 
     // 5. Start listening on all local interfaces with a random OS-assigned port
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-    println!("Started with node id: {:?}", swarm.local_peer_id());
+    //println!("Started with node id: {:?}", swarm.local_peer_id());
     let config_data = Some((*swarm.local_peer_id()).clone());
     if SELF_ADDR.set(config_data).is_err() {
-        ////////////////println!("Global state was already initialized!");
+        //////////////////println!("Global state was already initialized!");
     }
     let mut broadcast_interval = tokio::time::interval(Duration::from_secs(1));
     let mut message_counter = 0;
@@ -145,20 +145,20 @@ pub async fn start_p2p(mut rx_msg: Receiver<ChainMessage>, tx_prc: Sender<PROCES
             _ = broadcast_interval.tick() => {                
             }
             Some(job) = rx_msg.recv() => {
-                //println!("Message {} queued", job.r#type);
+                ////println!("Message {} queued", job.r#type);
                 let mut buf = Vec::<u8>::new();
                 job.encode(&mut buf).unwrap();
-                //println!("Sending broadcast of size: {}", buf.len());
+                ////println!("Sending broadcast of size: {}", buf.len());
                 match swarm.behaviour_mut().gossipsub.publish(topic.clone(), buf) {
                     Ok(message_id) => {
-                        //println!("SENT {}", job.r#type);
+                        ////println!("SENT {}", job.r#type);
 
                     }
                     Err(gossipsub::PublishError::InsufficientPeers) => {
-                        //////////////////println!("Broadcast skipped: No local peers connected yet.");
+                        ////////////////////println!("Broadcast skipped: No local peers connected yet.");
                     }
                     Err(e) => {
-                        ////////////////println!("Failed to broadcast message: {:?}", e);
+                        //////////////////println!("Failed to broadcast message: {:?}", e);
                     }
                 }
                 
@@ -169,13 +169,13 @@ pub async fn start_p2p(mut rx_msg: Receiver<ChainMessage>, tx_prc: Sender<PROCES
                 match event {
                     SwarmEvent::Behaviour(LocalNodeEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, multiaddr) in list {
-                            //println!("Discovered local peer via MDNS: {peer_id} at {multiaddr}");
+                            ////println!("Discovered local peer via MDNS: {peer_id} at {multiaddr}");
                             swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                         }
                     }
                     SwarmEvent::Behaviour(LocalNodeEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, multiaddr) in list {
-                            ////////////////////println!("Local peer expired: {peer_id} at {multiaddr}");
+                            //////////////////////println!("Local peer expired: {peer_id} at {multiaddr}");
                             swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                         }
                     }                  
@@ -187,9 +187,9 @@ pub async fn start_p2p(mut rx_msg: Receiver<ChainMessage>, tx_prc: Sender<PROCES
                         // Your custom check (e.g. block height, data parsing, payload limits)
                         let is_valid = true;
                         let deserialized_message = ChainMessage::decode(&message.data[..]).unwrap();
-                        //println!("RECIEVED {} !!!", deserialized_message.r#type);
+                        ////println!("RECIEVED {} !!!", deserialized_message.r#type);
                         let message_encoded = hex::encode(&deserialized_message.message);
-                        ////println!("{}", message_encoded);
+                        //////println!("{}", message_encoded);
                         let new_process = PROCESS{
                             node: message.source,
                             message: deserialized_message
@@ -198,7 +198,7 @@ pub async fn start_p2p(mut rx_msg: Receiver<ChainMessage>, tx_prc: Sender<PROCES
 
                     }
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        ////////////////println!("Listening on global address: {address}");
+                        //////////////////println!("Listening on global address: {address}");
                     }
                     _ => {}
                 }
@@ -215,9 +215,9 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
             // 1. Trigger broadcast every 5 seconds
             
             Some(job) = rx_prc.recv() => {
-                //////////////////println!("Recieved job {} from {:?}", job.message.r#type, job.node);
+                ////////////////////println!("Recieved job {} from {:?}", job.message.r#type, job.node);
                 let mut resp: Option<ChainMessage> = None;
-                println!("Starting job {}", job.message.r#type.as_str());
+                //println!("Starting job {}", job.message.r#type.as_str());
                 match job.message.r#type.as_str(){
                     "CMD:ELECTION"=>{
                         let new_header = headers::Header::generate_header(Vec::new()).await;
@@ -234,7 +234,7 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                         let load_block = proto_bufs::NewBlock::decode(&(job.message.message.clone())[..]).unwrap();
                         let load_header = load_block.header.unwrap();
                         let merkle_encoded = hex::encode(load_header.merkle_root.clone());
-                        println!("Block recieved: {}", merkle_encoded);
+                        //println!("Block recieved: {}", merkle_encoded);
                         let new_header = headers::Header::add_header(
                             load_header.num as u32,
                             load_header.merkle_root.clone(),
@@ -264,7 +264,7 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                             }
                         );
                         if tx_msg.send(e_resp.clone().unwrap()).await.is_err() {
-                            ////////////////println!("Consumer loop shut down. Exiting producer loop.");
+                            //////////////////println!("Consumer loop shut down. Exiting producer loop.");
                         }
                         let mut new_tx_msg = tx_msg.clone();
                         task::spawn(async move {
@@ -280,38 +280,38 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                             }
                         );
                         if tx_msg.send(e_resp.clone().unwrap()).await.is_err() {
-                            ////////////////println!("Consumer loop shut down. Exiting producer loop.");
+                            //////////////////println!("Consumer loop shut down. Exiting producer loop.");
                         }
                         let mut new_tx_msg = tx_msg.clone();
                     }
 
                     "HOST:REVOKE"=>{
-                        println!("Revoking....");
+                        //println!("Revoking....");
                         let mut new_tx_msg = tx_msg.clone();
                         add_revoke(job.message.message, new_tx_msg).await;
                         
                     }
                     "CMD:RESOURCE"=>{
                         let mut new_tx_msg = tx_msg.clone();
-                        ////println!("ADDED");
+                        //////println!("ADDED");
                         task::spawn(async move {
                             add_resource(job.node, Some(job.message.message), new_tx_msg, true).await;
                         });
                     }
                     "CMD:RESOURCES"=>{
                         let mut new_tx_msg = tx_msg.clone();
-                        ////println!("ADDED");
+                        //////println!("ADDED");
                         task::spawn(async move {
                             add_resource(job.node, Some(job.message.message), new_tx_msg, true).await;
                         });
                     }
                     "ELECTION"=>{
-                        //println!("Starting election!!");
+                        ////println!("Starting election!!");
                         let mut header_list = headers::HeadersList.read().await;
                         let header_num = header_list.len();
                         let identifier = (header_num as i32).to_le_bytes().to_vec();
                         drop(header_list);
-                        //println!("Starting election {:?}!", identifier);
+                        ////println!("Starting election {:?}!", identifier);
                         let election_index = consensus::Election::start_election(Some(identifier).clone()).await;
                         let mut new_tx_msg = tx_msg.clone();
                         task::spawn(async move {
@@ -320,13 +320,13 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                         
                     }
                     "REVEAL"=>{
-                        //println!("Starting reveal!");
+                        ////println!("Starting reveal!");
                         let mut header_list = headers::HeadersList.read().await;
                         let header_num = header_list.len();
                         let identifier = (header_num as i32).to_le_bytes().to_vec();
                         drop(header_list);
                         let election_index = consensus::Election::start_election(Some(identifier)).await;
-                        println!("Elindex: {}", election_index);
+                        //println!("Elindex: {}", election_index);
                         let mut new_tx_msg = tx_msg.clone();
                         task::spawn(async move {
                             consensus::Election::reveal(election_index, new_tx_msg).await
@@ -334,27 +334,27 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                         
                     }
                     "TARGET"=>{
-                        //println!("Starting distance!");
+                        ////println!("Starting distance!");
                         let mut header_list = headers::HeadersList.read().await;
                         let header_num = header_list.len();
                         let identifier = (header_num as i32).to_le_bytes().to_vec();
                         drop(header_list);
                         let election_index = consensus::Election::start_election(Some(identifier)).await;
-                        println!("Elindex: {}", election_index);
+                        //println!("Elindex: {}", election_index);
                         let mut new_tx_msg = tx_msg.clone();
                         task::spawn(async move {
                             consensus::Election::set_target(election_index, new_tx_msg).await
                         });
                     }
                     "SHOW"=>{
-                        //println!("Showing election!");
+                        ////println!("Showing election!");
                         let election_list = consensus::ElectionList.read().await;
                         let mut target = vec![0u8; 32];
                         rand::rng().fill_bytes(&mut target);
-                        println!("Target: {}", hex::encode(target.clone()));
+                        //println!("Target: {}", hex::encode(target.clone()));
                         
                         for election in election_list.iter(){
-                            println!("\nElection: {}\nValidator: {:?}\n", hex::encode(election.identifier.clone()), election.validator);
+                            //println!("\nElection: {}\nValidator: {:?}\n", hex::encode(election.identifier.clone()), election.validator);
                             for node in election.nodes.iter(){
                                 let distance = utils::xor_bit_distance(&node.value[..], &target[..]);
                                 println!(
@@ -378,7 +378,7 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                             }
                         );
                         if tx_msg.send(e_resp.clone().unwrap()).await.is_err() {
-                            ////////////////println!("Consumer loop shut down. Exiting producer loop.");
+                            //////////////////println!("Consumer loop shut down. Exiting producer loop.");
                         }
                     }
                     "DUMP" => {
@@ -394,7 +394,7 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                         let mut new_tx_msg = tx_msg.clone();
                         match consensus_message.r#type.as_str(){
                             "COMMIT" => {
-                                println!("Recieved commit!");
+                                //println!("Recieved commit!");
                                 task::spawn(async move {
                                     consensus::Election::add_commit(election_index, new_tx_msg, job.node.unwrap().clone(), consensus_message.clone()).await
                                 });
@@ -417,7 +417,7 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                                 consensus::Election::validate_block(election_index, consensus_message.clone(), new_tx_msg).await;
                             } 
                             "VALIDATE" => {
-                                println!("Checking proposed block!");
+                                //println!("Checking proposed block!");
                                 consensus::Election::add_validation(election_index, consensus_message.clone(), new_tx_msg).await;
                             } 
 
@@ -458,19 +458,19 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                     }
                     "RESOURCE"=>{
                         let mut new_tx_msg = tx_msg.clone();
-                        ////println!("ADDED");
+                        //////println!("ADDED");
                         task::spawn(async move {
                             add_resource(job.node, Some(job.message.message), new_tx_msg, false).await;
                         });
                     }
                     _=>{
-                        ////////////////println!("");
+                        //////////////////println!("");
                         
                     }
                 }
                 if resp.as_ref().is_none() == false{
                     if tx_msg.send(resp.clone().unwrap()).await.is_err() {
-                        ////////////////println!("Consumer loop shut down. Exiting producer loop.");
+                        //////////////////println!("Consumer loop shut down. Exiting producer loop.");
                         break;
                     }
                 }
@@ -488,9 +488,9 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
 
 
 pub async fn generate_vote(tx_msg: Sender<ChainMessage>){
-    ////////////////println!("GENERATING");
+    //////////////////println!("GENERATING");
     let mut dynamic_bytes = vec![0u8; 64];
-    //////////////////println!("Dynamic vector length: {}", dynamic_bytes.len());
+    ////////////////////println!("Dynamic vector length: {}", dynamic_bytes.len());
     let mut result;
     rand::rng().fill_bytes(&mut dynamic_bytes);
     let mut hasher = Sha256::new();
@@ -502,11 +502,11 @@ pub async fn generate_vote(tx_msg: Sender<ChainMessage>){
         message:result.clone(),
     };
     if tx_msg.send(chain.clone()).await.is_err() {
-        ////////////////println!("Consumer loop shut down. Exiting producer loop.");
+        //////////////////println!("Consumer loop shut down. Exiting producer loop.");
     }
     task::spawn(async move {
         if let Some(config) = SELF_ADDR.get() {
-            ////////////////println!("Task 1 read config: {:?}", config);
+            //////////////////println!("Task 1 read config: {:?}", config);
             add_commit(*config, result, Some(dynamic_bytes.clone())).await;
         }
     });
@@ -516,7 +516,7 @@ pub async fn add_commit(address: Option<PeerId>, hash: Vec::<u8>, value: Option<
     let mut commit_list = mempool::COMMIT_LIST.write().await;
     for commit in commit_list.iter(){
         if commit.node == address{
-            ////////////////println!("RDDED {:?}:{}", address, encoded);
+            //////////////////println!("RDDED {:?}:{}", address, encoded);
             return
         }
     }
@@ -529,7 +529,7 @@ pub async fn add_commit(address: Option<PeerId>, hash: Vec::<u8>, value: Option<
         }
     );
     
-    ////////////////println!("Added {:?}:{}", address, encoded);
+    //////////////////println!("Added {:?}:{}", address, encoded);
     drop(commit_list)
 }
 
@@ -539,14 +539,14 @@ pub async fn reveal_vote(tx_msg: Sender<ChainMessage>){
     let mut commit_list = mempool::COMMIT_LIST.read().await;
     for commit in commit_list.iter(){
         if let Some(config) = SELF_ADDR.get() {
-            ////////////////println!("Task 1 read config: {:?}", config);
+            //////////////////println!("Task 1 read config: {:?}", config);
             if commit.node == *config{
                 let reveal_message = ChainMessage{
                     r#type: String::from("REVEAL"),
                     message:commit.value.clone().unwrap()
                 };
                 if tx_msg.send(reveal_message.clone()).await.is_err() {
-                    ////////////////println!("Consumer loop shut down. Exiting producer loop.");
+                    //////////////////println!("Consumer loop shut down. Exiting producer loop.");
                 }
                 return;
             }
@@ -561,14 +561,14 @@ pub async fn add_reveal(address: Option<PeerId>, value: Option<Vec::<u8>>){
     let mut commit_list = mempool::COMMIT_LIST.write().await;
     for commit in commit_list.iter_mut(){
         if commit.node == address{
-            //////////////////println!("REVEAL!");
+            ////////////////////println!("REVEAL!");
             commit.value = value.clone();
             let mut encoded = hex::encode(value.clone().unwrap());
-            ////////////////println!("Revealed value for {:?}: {}", address, encoded);
+            //////////////////println!("Revealed value for {:?}: {}", address, encoded);
             return
         }
     }
-    ////////////////println!("No COMMIT found!");
+    //////////////////println!("No COMMIT found!");
     drop(commit_list)
 }
 
@@ -580,7 +580,7 @@ pub async fn get_target(tx_msg: Sender<ChainMessage>) -> Option<mempool::COMMIT>
     for vote in commit_list.iter(){
         if vote.value.is_none() == false{
             let encoded = hex::encode(vote.value.clone().unwrap());
-            ////////////////println!("For {}", encoded);
+            //////////////////println!("For {}", encoded);
             target = xor_two_vectors(&target, &vote.value.as_ref().unwrap()[..32])  
         }
          
@@ -591,13 +591,13 @@ pub async fn get_target(tx_msg: Sender<ChainMessage>) -> Option<mempool::COMMIT>
     target = hasher.finalize().to_vec();
 
     encoded = hex::encode(&target);
-    ////////////////println!("Target value: {}", encoded);
+    //////////////////println!("Target value: {}", encoded);
     let mut min = 256;
     let mut result: Option<mempool::COMMIT> = None;
     
     for vote in commit_list.iter_mut(){
         let distance  = hamming_vector_distance(&target, &vote.value.as_ref().unwrap()[..32]);
-        ////////////////println!("Distance: {}", distance); 
+        //////////////////println!("Distance: {}", distance); 
         if distance < min {
             result = Some((*vote).clone());
             min = distance;
@@ -605,9 +605,9 @@ pub async fn get_target(tx_msg: Sender<ChainMessage>) -> Option<mempool::COMMIT>
         
     }
     if let Some(config) = SELF_ADDR.get() {
-        ////////////////println!("Task 1 read config: {:?}", config);
+        //////////////////println!("Task 1 read config: {:?}", config);
         if result.unwrap().node == *config{
-           //println!("WINNERWINNER!!!!!!");
+           ////println!("WINNERWINNER!!!!!!");
             headers::Header::generate_header(Vec::<u8>::new()).await;
             
             
@@ -619,52 +619,15 @@ pub async fn get_target(tx_msg: Sender<ChainMessage>) -> Option<mempool::COMMIT>
 }
 
 
-pub async fn add_resource2(address: Option<PeerId>, value: Option<Vec::<u8>>, tx_msg: Sender<ChainMessage>, broadcast:bool){
-    
-    let deserialized_resource = Resource::decode(&(value.clone().unwrap())[..]).unwrap();   
-    let resource_clone = deserialized_resource.clone();
-    let validity = resource_clone.validate_add().await;
-
-    
-    if validity == false{
-        println!("{} not added to queue", deserialized_resource.payload.clone().unwrap().grid);
-        return
-    }
-    else{
-        println!("{} added to queue", deserialized_resource.payload.clone().unwrap().grid);
-        let item_validity = validators::verify_proof(deserialized_resource.clone()).await;
-        if item_validity == false{
-            println!("Not included!");
-            return
-        }
-        println!("Adding! Valid");
-        
-        resource_clone.add_resource().await;
-        let e_resp = Some(
-            ChainMessage{
-                r#type: String::from("RESOURCE"),
-                message: value.unwrap()
-            }
-        );
-        if broadcast{
-            if tx_msg.send(e_resp.clone().unwrap()).await.is_err() {
-                ////////////////println!("Consumer loop shut down. Exiting producer loop.");
-            }
-        }
-    }
-}
-
-
 pub async fn add_resource(address: Option<PeerId>, value: Option<Vec::<u8>>, tx_msg: Sender<ChainMessage>, broadcast:bool){
     let deserialized_resources = proto_bufs::BulkResources::decode(&(value.clone().unwrap())[..]).unwrap(); 
-    println!("Serving bulk!");  
     for resource in deserialized_resources.resources{
-        println!("Serving PALKLL!");
         let resource_clone = resource.clone();
         let resource_exists_clone = resource.clone();
         let mut tx_msg_clone = tx_msg.clone();
         let check_exists = task::spawn(
             async move {
+                println!("Recieved: {}", resource_exists_clone.payload.as_ref().unwrap().grid);
                 let exists_check = resource_exists_clone.exists();
                 let validation_check = validators::verify_resource(resource_exists_clone.clone(), None);
                 let exists = exists_check.await;
@@ -677,34 +640,31 @@ pub async fn add_resource(address: Option<PeerId>, value: Option<Vec::<u8>>, tx_
                     println!("Resource is invalid!");
                     return;
                 }
-                println!("Resource is valid!");
-                if resource_exists_clone.payload.as_ref().unwrap().r#type.as_str() == "CALL"{
-                    println!("Serving call!");
-                    let mut new_session = state::StateSession::start_session().await;
-                    let mut new_execution = vm::Execution::load_call(resource_exists_clone.clone()).await;
-                    new_execution.execute(&mut new_session).await;
-                    new_session.commit().await;
-                }
+
 
                 resource_exists_clone.add_resource().await;
-                let resource_packaged = proto_bufs::BulkResources{
-                    resources: vec![resource_clone]
-                };
-                let mut resource_encoded = Vec::<u8>::new();
-                resource_packaged.encode(&mut resource_encoded).unwrap();
-                let e_resp = Some(
-                    ChainMessage{
-                        r#type: String::from("RESOURCE"),
-                        message: resource_encoded
-                    }
-                );
+                println!("Added resource:{}!", resource_exists_clone.payload.as_ref().unwrap().grid);
+                let mut new_state = state::StateSession::start_session().await;
+                Resource::process_resources(vec![resource_clone.clone()], new_state).await;
+                
                 if broadcast{
-                    if tx_msg_clone.send(e_resp.clone().unwrap()).await.is_err() {
-                        println!("Consumer loop shut down. Exiting producer loop.");
-                    }
+                    let resource_packaged = proto_bufs::BulkResources{
+                        resources: vec![resource_clone]
+                    };
+                    let mut resource_encoded = Vec::<u8>::new();
+                    resource_packaged.encode(&mut resource_encoded).unwrap();
+                    let e_resp = Some(
+                        ChainMessage{
+                            r#type: String::from("RESOURCE"),
+                            message: resource_encoded
+                        }
+                    );
+                    if tx_msg_clone.send(e_resp.clone().unwrap()).await.is_err() {}
+
                 }            
             }
         );
+        
 
     }
 }
@@ -725,10 +685,10 @@ pub async fn faucet(tx_msg: Sender<ChainMessage>){
         }
     );
     if tx_msg.send(e_resp.clone().unwrap()).await.is_err() {
-        println!("Consumer loop shut down. Exiting producer loop.");
+        //println!("Consumer loop shut down. Exiting producer loop.");
     }
     cash.add_resource().await;
-    println!("Faucet saved!");
+    //println!("Faucet saved!");
 
 }
 
@@ -749,7 +709,7 @@ pub async fn add_revoke(value: Vec::<u8>, tx_msg: Sender<ChainMessage>){
             status: 4
         };
         deserialized_resource.add_resource().await;
-        println!("Revoked: {}", revoked_resource);
+        //println!("Revoked: {}", revoked_resource);
     }  
 
 }

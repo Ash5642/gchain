@@ -7,7 +7,6 @@ use libp2p::{
 use std::fs;
 use std::env;
 use std::io;
-use crate::mempool_actions;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::{Mutex, OnceLock};
@@ -60,7 +59,7 @@ pub async fn sign_key() -> &'static Option<Resource> {
         let key_grid = &args[4];
         let key_exists = Resource::find_resource(key_grid.to_string()).await;
         if key_exists.is_none(){
-            println!("NOOKEEEEE!");
+            ////println!("NOOKEEEEE!");
         }
         Resource::find_resource(key_grid.to_string()).await
     })

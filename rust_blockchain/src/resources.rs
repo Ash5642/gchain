@@ -4,7 +4,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, tls, yamux, Multiaddr, PeerId,
 };
-use crate::mempool_actions;
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::{Mutex, OnceLock};
@@ -28,7 +28,8 @@ use crate::proto_bufs;
 use crate::entity;
 use crate::proto_bufs::Payload as Payload;
 use crate::proto_bufs::Field as Field;
-
+use crate::vm;
+use crate::state;
 use crate::proto_bufs::ChainMessage as ChainMessage;
 use sha2::{Sha256, Digest};
 use crate::crypt;
@@ -55,6 +56,7 @@ pub trait ChainResource {
     fn to_bytes(&self) -> Vec::<u8>;
     fn to_hash(&self) -> Vec::<u8>;
     fn hash(&self) -> Vec::<u8>;
+    fn get_field_bytes(&self, key: &str) -> Vec::<u8>;
     fn get_field(&self, key: &str) -> FieldValue;
     fn check_validity(&self) -> bool;
     async fn exists(&self) -> Option<bool>;
@@ -70,7 +72,8 @@ pub trait ChainResource {
     async fn grid_exists(grid: String) -> bool;
     async fn grid_status(grid: &str) -> Vec::<proto_bufs::GridStatus>;
     async fn grid_in_mempool(grid: &str) -> bool;
-    fn create_resource(geid: &str, r#type: &str) -> Resource;
+    fn create_resource(geid: &str, r#type: &str, identifider: &str) -> Resource;
+    async fn process_resources(resources: Vec::<Resource>, state: state::StateSession) -> Vec::<Resource>;
     
 }
 
@@ -137,9 +140,19 @@ impl ChainResource for Resource{
 
     async fn add_resource(&self){
         let mut resource_pool = ResourcePool.write().await;
+        println!("Added to mempool: {}", self.payload.as_ref().unwrap().grid);
         resource_pool.push(self.clone());
         drop(resource_pool)
     }
+    fn get_field_bytes(&self, key: &str) -> Vec::<u8>{
+        for field in self.payload.as_ref().unwrap().fields.clone(){
+            if field.key == key || key == "*"{
+                return field.value.clone()
+            }
+        }
+        return Vec::new();
+    }
+
 
     fn get_field(&self, key: &str) -> FieldValue{
         for field in self.payload.as_ref().unwrap().fields.clone(){
@@ -147,20 +160,15 @@ impl ChainResource for Resource{
 
                 return match field.r#type.as_str() {
                     "bytes" => {
-                        ////////////////println!("TEXT"); 
                         let encoded = hex::encode(field.value.clone());
-                        //////////////println!("VAL {} {}", field.key, encoded);
                         return FieldValue::Bytes(field.value.clone());
                     },
                     "int" => {
-                        ////////////////println!("TEXT"); 
                         let encoded = hex::encode(field.value.clone());
-                        //////////////println!("VAL {} {}", field.key, encoded);
                         return FieldValue::Number(i32::from_le_bytes(field.value.clone().try_into().expect("INCORRLEN")));
                     },
                     
                     "gid"|"gid:key"|"ARR:gid"|"str"  => {
-                        //////////////println!("VAL {} {}", field.key, String::from_utf8(field.value.clone()).unwrap());
                         return FieldValue::Text(String::from_utf8(field.value.clone()).unwrap())
                     },
                     _=>{
@@ -175,13 +183,13 @@ impl ChainResource for Resource{
     fn get_text_field(&self, key: &str) -> String{
         
         let str_enum = self.get_field(key);
-        println!("ETETETETETE {}", key);
+        ////println!("ETETETETETE {}", key);
         let FieldValue::Text(str_result) = str_enum else { 
-            println!("{:?}", str_enum);
-            println!("UHOH!");
+            ////println!("{:?}", str_enum);
+            ////println!("UHOH!");
             return "".to_string(); 
         };
-        println!("UUHUHUHUH {}", str_result);
+        ////println!("UUHUHUHUH {}", str_result);
         return str_result;
     }
 
@@ -189,10 +197,10 @@ impl ChainResource for Resource{
         
         let str_enum = self.get_field(key);
         let FieldValue::Number(str_result) = str_enum else { 
-            println!("UHOH!");
+            ////println!("UHOH!");
             return -1; 
         };
-        println!("UUHUHUHUH {}", str_result);
+        ////println!("UUHUHUHUH {}", str_result);
         return str_result;
     }
 
@@ -259,7 +267,7 @@ impl ChainResource for Resource{
                 }
 
             }else{
-                //println!("Bloom mismatch");
+                //////println!("Bloom mismatch");
                 continue
             }
         }
@@ -281,15 +289,15 @@ impl ChainResource for Resource{
         None
     }
     async fn grid_exists(grid: String) -> bool{
-        //println!("Checking existence");
+        //////println!("Checking existence");
         let mut resource_pool = ResourcePool.write().await;
         let mut header_list = headers::HeadersList.write().await;
         
         for header in header_list.iter_mut(){
             let bloom_result = header.check_bloom(format!("+{}", grid.clone()));
-            //println!("Bloom result: {}", bloom_result);
+            //////println!("Bloom result: {}", bloom_result);
             if bloom_result{
-                //println!("Match in block: {}", header.num);
+                //////println!("Match in block: {}", header.num);
                 let head_clone = header.clone();
                 let db_result = headers::Header::check_Database(header, grid.clone()).await;
                 if db_result{
@@ -297,7 +305,7 @@ impl ChainResource for Resource{
                 }
 
             }else{
-                //println!("Bloom mismatch");
+                //////println!("Bloom mismatch");
                 continue
             }
         }
@@ -398,7 +406,7 @@ impl ChainResource for Resource{
                     )
                 }
                 else{
-                    println!("False positive!");
+                    ////println!("False positive!");
                 }
 
             }
@@ -428,11 +436,11 @@ impl ChainResource for Resource{
     }
 
 
-    fn create_resource(geid: &str, r#type: &str) -> Resource{
+    fn create_resource(geid: &str, r#type: &str, identifier: &str) -> Resource{
         let mut new_resource = Resource{
             payload: Some(
                 Payload{
-                    grid: format!("{geid}[{type}]=ABS123"),
+                    grid: format!("{geid}[{type}]={identifier}"),
                     r#type: r#type.to_string(),
                     fields: Vec::new(),
                     action: "".to_string(),
@@ -444,6 +452,27 @@ impl ChainResource for Resource{
             status: 0
         };
         return new_resource
+    }
+
+    async fn process_resources(resources: Vec::<Resource>, mut state: state::StateSession) -> Vec::<Resource>{
+        println!("Processing resource!");
+        let mut new_list: Vec::<Resource> = Vec::new();
+        for resource in resources{
+            match resource.payload.as_ref().unwrap().r#type.as_str(){
+                "CALL" => {
+                    let mut new_execution_result = vm::Execution::load_call(&resource).await;
+                    let mut new_execution = new_execution_result.unwrap();
+                    new_execution.execute(&mut state).await;
+                    new_list.push(resource.clone());
+                    for (key, generated) in &new_execution.generated{
+                        new_list.push(generated.clone());
+                    }
+                }
+                _=>{}
+            }
+            
+        }
+        return new_list;
     }
 
 

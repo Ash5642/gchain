@@ -58,7 +58,8 @@ pub struct StateUpdate{
 pub struct StateSession{
     pub db: Arc<rocksdb::DB>,
     pub nodes: Vec::<StateUpdate>,
-    pub generator: RandGenerator
+    pub generator: RandGenerator,
+    pub height: u64
 }
 
 static STATE_DB: OnceCell<rocksdb::DB> = OnceCell::const_new();
@@ -71,7 +72,7 @@ pub async fn get_db() -> &'static Arc<DB> {
             let mut opts = Options::default();
             opts.create_if_missing(true);
             
-            println!("Initializing database lock for the first time...");
+            //println!("Initializing database lock for the first time...");
             let args: Vec<String> = env::args().collect();
             let db_dir = args[2].clone();
             let db_name = format!("{db_dir}/state");
@@ -89,12 +90,12 @@ pub async fn initialize_state(){
     let root_node: proto_bufs::StateNode;
     match db.get(b"ROOT") {
         Ok(Some(value)) => {
-            println!("Key found!");
-            println!("Loaded state header: {}", hex::encode(value));
+            //println!("Key found!");
+            //println!("Loaded state header: {}", hex::encode(value));
 
         },
         Ok(None) => {
-            println!("Key not found");
+            //println!("Key not found");
             root_node = proto_bufs::StateNode{
                 children: vec![vec![0u8; 0]; 16],
                 entity: None
@@ -104,7 +105,7 @@ pub async fn initialize_state(){
             db.put(b"ROOT", root_encoded).unwrap();
         },
         Err(e) => {
-            println!("Key not found");
+            //println!("Key not found");
             root_node = proto_bufs::StateNode{
                 children: vec![vec![0u8; 0]; 16],
                 entity: None
@@ -134,7 +135,7 @@ pub async fn read_record(geid: &str) -> Option<proto_bufs::StateEntity>{
 
     while !current_node.is_none(){
         if remaining_string.len() == 0{
-            println!("{:#?}", current_node.as_ref().unwrap().entity);
+            //println!("{:#?}", current_node.as_ref().unwrap().entity);
             return current_node.as_ref().unwrap().entity.clone();
         }
         let first_char = remaining_string.chars().next().unwrap();
@@ -164,7 +165,7 @@ pub async fn get_root() -> Vec::<u8>{
     match db.get(b"ROOT") {
         Ok(Some(value)) => {
             let root = utils::get_hash(value);
-            println!("State root: {}", hex::encode(&root));
+            //println!("State root: {}", hex::encode(&root));
             return root;
 
         },
@@ -184,10 +185,12 @@ impl StateSession{
             counter: 0,
             seed_bytes: old_root.try_into().unwrap()
         };
+        let header_list = headers::HeadersList.read().await;
         return StateSession{
             db: get_db().await.clone(),
             nodes: Vec::new(),
-            generator: new_generator
+            generator: new_generator,
+            height: header_list.len() as u64
         };
     }
     pub fn rand(&mut self) -> Vec::<u8>{
@@ -324,12 +327,14 @@ impl StateSession{
         }
     }
 
-    pub fn get_root(&self) -> Vec::<u8>{
+    pub async fn get_root(&self) -> Vec::<u8>{
         let last = self.nodes.last();
         if last.is_none(){
-            return Vec::new();
+            return get_root().await
         }
-        return Vec::new()
+        let mut node_encoded = Vec::<u8>::new();
+        last.as_ref().unwrap().node.encode(&mut node_encoded).unwrap();
+        return utils::get_hash(node_encoded);
 
     }
 
