@@ -1,0 +1,214 @@
+use futures::stream::StreamExt;
+use libp2p::{
+    gossipsub, mdns, noise,
+    swarm::{NetworkBehaviour, SwarmEvent},
+    tcp, tls, yamux, Multiaddr, PeerId,
+};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::{Mutex, OnceLock};
+use tokio::task;
+use rand::prelude;
+use crate::state;
+use rand::Rng;
+use std::error::Error;
+use std::time::Duration;
+use crate::mempool::MEMPOOL as MEMPOOL;
+use crate::mempool::MESSAGE_POOL as MESSAGE_POOL;
+use crate::mempool::PROCESS_POOL as PROCESS_POOL;
+use crate::mempool::PROCESS_QUEUE as PROCESS_QUEUE;
+use crate::mempool::PROCESS as PROCESS;
+use crate::mempool;
+use tokio::sync::mpsc::{Sender, Receiver};
+use hex;
+use crate::entity;
+use crate::blocks;
+use crate::mempool::BROADCAST_POOL as BROADCAST_POOL;
+use crate::mempool::MESSAGE_QUEUE as MESSAGE_QUEUE;
+use crate::proto_bufs::Resource as Resource;
+use crate::proto_bufs::Payload as Payload;
+use crate::proto_bufs::Field as Field;
+use crate::resources::structures;
+use crate::utils;
+use crate::resources::signatures;
+use crate::proto_bufs::ChainMessage as ChainMessage;
+use sha2::{Sha256, Digest};
+
+use prost::Message; 
+
+
+use async_recursion::async_recursion;
+use crate::resources;
+
+pub async fn verify_proof(mut item: Resource) -> bool{
+    ////////println!("Validating: {}", item.payload.as_ref().unwrap().grid);
+    let result = verify_resource(&item, None).await;
+    ////////println!("{}: {}!", item.clone().payload.unwrap().grid.as_str(), result.unwrap_or(String::from("INVALID")));
+    return true
+
+}
+
+
+#[async_recursion]
+pub async fn verify_resource(item: &Resource, parent: Option<Resource>) -> Option<String>{
+    let mut decided = false;
+    let mut result = false;
+    let entity = entity::Entity::get_entity(&item.clone().payload.unwrap().grid);
+    let parent = entity.get_parent();
+
+    if parent.is_none(){
+        ////////println!("Root entity element!");
+        let geid = entity.get_geid();
+        let geid_record = format!("{geid}[RECORD]");
+        ////////println!("Searching for record for: {}", geid_record);
+        let mut record_exists = false;
+        let record_list = crate::Resource::grid_status(&geid_record).await;;
+        for record in record_list.iter(){
+            ////////println!("Record: {:?}", record);
+            if record.status == "CHAIN"{
+                record_exists = true;
+            }
+        }
+        if !record_exists{
+            ////////println!("Entity has no on chain record!");
+        }
+    }
+
+
+    for proof in &item.proof{
+        let raw_validity = utils::check_merkle_proof(&proof.hashes, &item.to_hash());
+        if proof.grid.as_str() == ""{
+            let root_valid = blocks::Header::match_header(proof.hashes.last().unwrap().to_vec()).await;
+            if root_valid == false{
+                //return None;
+            }
+            //////////println!("Validated by chain inclusion");
+           //return Some(String::from("CHAIN"));
+        }
+        else{
+            let included_lroot = item.find_signature(&proof.grid);
+            if included_lroot.is_none(){
+                //return None;
+            }
+            if *proof.hashes.last().unwrap() != included_lroot.clone().unwrap().get_byte_field("resource_hash").unwrap(){
+                //return None;
+            }
+            //return Some(String::from("CHAIN"));
+        }
+    }
+    //////println!("Direct check!");
+    let entity = item.get_entity();
+    let parent = entity.get_parent();   
+    if !parent.is_none(){
+        match item.payload.as_ref().unwrap().r#type{
+            structures::ResourceCodes::Record | structures::ResourceCodes::Key => {
+                ////////println!("Key validation!");
+                let mut parent_auth = false;
+                for included in &item.signatures{
+                    match included.payload.as_ref().unwrap().r#type{
+                        
+                        _ => {
+
+                        }
+                    }
+                }
+                if !parent_auth{
+                    return None;
+                }
+            }
+            structures::ResourceCodes::Signature|structures::ResourceCodes::LocalRoot => {
+                let signing_key = item.get_text_field("key");
+                let signing_key_match = item.find_signature(&signing_key);
+                if signing_key_match.is_none(){
+                    ////////println!("Key not included!");
+                }
+                else{
+                    ////////println!("Key {} included!", signing_key);
+                }
+            }
+            _ =>{
+
+            }
+        }
+    }
+    let mut included_handles = vec![];
+    for included in &item.signatures{
+        let included_clone = included.clone();
+        let item_clone = item.clone();
+        let included_validity = task::spawn(
+            async move {
+                return verify_resource(&included_clone, Some(item_clone)).await
+            }
+        );
+        included_handles.push(included_validity);
+        
+    }
+    let mut results = vec![];
+    for handle in included_handles {
+        results.push(handle.await); // Joins one by one
+    }
+    ////////println!("Results for {}: {:?}", item.payload.as_ref().unwrap().grid, results);
+    for result in results.iter(){
+        match result {
+            Ok(Some(val)) => {
+                ////////println!("Got a string: {}", val);
+                match val.as_str(){
+                    "CHAIN" => {
+                        ////////println!("Contains confirmed inclusion!");
+                    }
+                    _ => {
+                        return None;
+                    }
+                }
+            },
+            Ok(None) => {
+                return None;
+            },
+            Err(e) => println!("Included validation error: {}", e),
+        } 
+    }
+    return Some(String::from("YES"));
+}
+
+pub async fn verify_signature( signature: Resource) -> bool{
+    let mut decided = false;
+    let mut result = false;
+
+    let signing_key = signature.get_text_field("key");
+    let mut key_match: Option<Resource> = None;
+    for key in &signature.signatures{
+        if key.payload.clone().unwrap().clone().grid == signing_key{
+            key_match = Some(key.clone());
+            break;
+        }
+    }
+    if key_match.is_none() == true{
+        ////////println!("Key not included...");
+        return false;
+    }
+    let signature_validity = signatures::check_signature(signature, key_match.unwrap());
+    ////////println!("{}", signature_validity);
+    return signature_validity;
+}
+
+
+
+impl Resource{
+    #[async_recursion]
+    pub async fn verify_resource_session(&self, state: &mut state::StateSession) -> Option<String>{
+        for proof in &self.proof{
+            let raw_validity = utils::check_merkle_proof(&proof.hashes, &self.to_hash());
+            if proof.grid.as_str() == ""{
+                let root_valid = blocks::Header::match_header(proof.hashes.last().unwrap().to_vec()).await;
+                if root_valid{
+                    println!("Validated by chain inclusion");
+                }
+            }
+        }
+
+        for nested_resource in self.signatures.iter(){
+            
+        }
+        None
+    }
+}
