@@ -34,10 +34,10 @@ impl Execution{
             "M" => {
                 
                 if let Some(stack_var) = frame.memory.vars.get(&operand.key){
-                    return Some(stack_var);
+                    return Some(stack_var.clone());
                 }
                 if let Some(global_var) = self.memory.vars.get(&operand.key){
-                    return Some(global_var);
+                    return Some(global_var.clone());
                 }
                 return None;
             }
