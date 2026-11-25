@@ -17,7 +17,7 @@ use crate::resources::validators;
 use std::fs;
 use crate::blocks::merkle::MerkleNode;
 
-
+use crate::state;
 
 
 use tokio::sync::mpsc::{Sender, Receiver};
@@ -36,7 +36,7 @@ use fastbloom::BloomFilter;
 use std::sync::{Mutex, LazyLock, Arc};
 use tokio::sync::RwLock;
 use crate::resources::signatures;
-
+use std::sync::atomic::{AtomicBool, Ordering};
 use libp2p::{
     gossipsub, mdns, noise,
     swarm::{NetworkBehaviour, SwarmEvent},
@@ -46,72 +46,110 @@ use libp2p::{
 
 
 impl Election{
-    pub async fn set_target(index: usize, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>){
-        let mut election_list = ElectionList.write().await;
-        let election = match election_list.get_mut(index) {
-            Some(e) => e,
-            None => return,
-        };
-        let mut target = vec![0u8; 32];
-        rand::rng().fill_bytes(&mut target);
-        election.target = target.clone();
-        let mut buf = Vec::<u8>::with_capacity(32);
-        let vote_message = proto_bufs::ConsensusMessage{
-            r#type: String::from("TARGET"),
-            identifier: election.identifier.clone(),
-            message: target.clone(),
-            signature: Vec::new(),
-            geid: crate::get_geid().to_string(),
-            key: None
-        };
-        vote_message.encode(&mut buf).unwrap();
-        let vote_chainmessage = proto_bufs::ChainMessage{
-            r#type: String::from("CONSENSUS"),
-            message: buf.clone()
-        };
-        election.revealed = true;
-        let tx_msg_win_clone = tx_msg.clone();
-        if tx_msg.send(vote_chainmessage.clone()).await.is_err() {}
-        drop(election_list);
-        Election::add_target(index, target.clone(), tx_msg_win_clone).await;
-    }
 
-    pub async fn add_target(index: usize, target: Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>) -> bool{
-        let mut election_list = ElectionList.write().await;
-        let election = match election_list.get_mut(index) {
-            Some(e) => e,
-            None => return false,
-        };
-        election.target = target.clone();
-        let mut closest_distance = 256;
-        let mut closest_match: Option<Node> = None;
-        //////println!("{:#?}", election.nodes);
-        for node in election.nodes.iter(){
-            let distance = utils::xor_bit_distance(&node.value[..], &target[..]);
-            if distance < closest_distance{
-                closest_match = Some(node.clone());
-                closest_distance = distance;
+    pub async fn grind(target: Vec::<u8>, window_size: u32, stop: Arc<AtomicBool>) -> Option<[u8; 32]>{
+        let mut grind_nonce: [u8; 32] = [0u8; 32];
+        while !stop.load(Ordering::Relaxed){
+            rand::rng().fill_bytes(&mut grind_nonce);
+            let distance = utils::xor_bit_distance(&grind_nonce, &target[..]);
+            if distance < window_size{
+                println!("Found!");
+                return Some(grind_nonce.try_into().expect("Error!"));
             }
         }
-        println!("Picked validator: {}", closest_match.clone().unwrap().geid);
-        election.validator = Some(closest_match.clone().unwrap().geid);
-        drop(election_list);
-        if closest_match.clone().unwrap().geid == crate::get_geid(){
-            Election::propose_block(index, tx_msg).await;
-        }
-        return false
+        println!("PREMATURW");
+        return None;
     }
 
-    pub async fn distance(index: usize, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>) {
-        let mut election_list = ElectionList.write().await;
-        let election = match election_list.get_mut(index) {
+
+    pub async fn get_target(identifier: &Vec::<u8>) -> [u8; 32]{
+        let state_root = state::get_root().await;
+        return state_root.try_into().expect("Root error!");
+    }
+
+
+    pub async fn set_target(index: &Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>){
+        Election::send_consensus_message(index, "TARGET", &Vec::new(), tx_msg.clone()).await;
+        Election::select_PoS_validator(index, tx_msg).await;
+    }
+
+
+    pub async fn select_PoS_validator(identifier: &Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>){
+        let mut election_list = ElectionList.read().await;
+        let mut election = match election_list.get(identifier) {
             Some(e) => e,
             None => return,
         };
-        let mut target = vec![0u8; 32];
-        rand::rng().fill_bytes(&mut target);
-        for node in election.nodes.iter(){
-            let distance = utils::xor_bit_distance(&node.value[..], &target[..]);
+        let target = Election::get_target(identifier).await;
+        println!("Target: {:?}", hex::encode(target));
+        let mut closest_distance: u32 = 256;
+        let mut closest_geid: Option<&str> = None;
+        for (node_geid, node) in election.nodes.iter(){
+            let distance = utils::xor_bit_distance(&node.value.unwrap(), &target);
+            if distance<closest_distance{
+                closest_distance = distance;
+                closest_geid = Some(node_geid);
+            }
         }
+        println!("Winner: {:?} at {:?}", closest_geid, closest_distance);
+        println!("{}, {}",  closest_geid.unwrap(), crate::get_geid().to_string());
+        if closest_geid.unwrap() == crate::get_geid().to_string(){
+            println!("Proposing!");
+            drop(election);
+            drop(election_list);
+            Election::propose_block(identifier, tx_msg).await;
+        }
+        
     }
+
+
+    
+
+    pub async fn select_validator(index: &Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>) {
+        let election_list = ElectionList.read().await;
+        let election = match election_list.get(index) {
+            Some(e) => e,
+            None => return,
+        };
+        let target = Election::get_target(index).await;
+        println!("Target: {:?}", hex::encode(target));
+        if election.PoW_enabled{
+            let mut closest_distance: u32 = 256;
+            let mut closest_geid: Option<&str> = None;
+            for (node_geid, node) in election.nodes.iter(){
+                let distance = utils::xor_bit_distance(&node.value.unwrap(), &target);
+                if distance<closest_distance{
+                    closest_distance = distance;
+                    closest_geid = Some(node_geid);
+                }
+            }
+            println!("Winner: {:?} at {:?}", closest_geid, closest_distance);
+            if closest_geid.unwrap() == crate::get_geid(){
+                println!("Won!");
+            }
+        }
+        else{
+            let stop = election.stop_grind_flag.clone();
+            let mut grind_thread = tokio::spawn(
+                async move{
+                    Election::grind(target.to_vec(), 90, stop).await
+                }
+            );
+            match grind_thread.await {
+                Ok(Some(val)) => {
+                    println!("Win!");
+                    return;
+                }
+                _ => {
+                    return;
+                }
+            }
+        }
+
+
+
+        
+    }
+
+
 }

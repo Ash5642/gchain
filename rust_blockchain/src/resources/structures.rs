@@ -13,11 +13,13 @@ pub struct ResourceField {
     pub id: u32,
 }
 
+
 pub struct ResourceType {
     pub id: u32,
     pub name: &'static str, 
     pub fields: &'static [ResourceField],
     pub flags: &'static [&'static str],
+    pub permissions: Option<[[bool; 5]; 3]>
 }
 
 
@@ -31,7 +33,18 @@ pub mod ResourceCodes {
     pub const LocalRoot:u32 = 7;
 }
 
+pub mod PermisionTypeCode {
+    pub const Issue:usize = 1;
+    pub const Revoke:usize = 2;
+}
 
+pub mod PermissionCode {
+    pub const Public:usize = 0;
+    pub const Executable:usize = 1;
+    pub const Direct:usize = 2;
+    pub const Parent:usize = 3;
+    pub const Custom:usize = 3;
+}
 
 pub mod ResourceTypes {
     use super::{ResourceField, ResourceFieldType, ResourceType};
@@ -40,6 +53,7 @@ pub mod ResourceTypes {
         name:"key",
         id: 0,
         flags: &[],
+        permissions: None,
         fields: &[
             ResourceField {
                 key: "public_key",
@@ -69,6 +83,20 @@ pub mod ResourceTypes {
         id: 1,
         name:"record",
         flags: &[],
+        permissions: Some(
+            [
+                [
+                    true, true, false, true, false
+                ],
+                [
+                    true, true, true, true, true
+                ],
+                [
+                    true, true, true, true, true
+                ]
+
+            ]
+        ),
         fields: &[
             ResourceField {
                 key: "type",
@@ -84,6 +112,7 @@ pub mod ResourceTypes {
         name:"call",
         id:2,
         flags: &[],
+        permissions: None,
         fields: &[
             ResourceField {
                 key: "from",
@@ -113,6 +142,7 @@ pub mod ResourceTypes {
         name:"call",
         id:3,
         flags: &[],
+        permissions: None,
         fields: &[
             ResourceField {
                 key: "executable",
@@ -120,9 +150,17 @@ pub mod ResourceTypes {
                 descriptor: "",
                 required: true,
                 id: 1,
-            },
+            }
+        ],
+    };
+    pub const Executable: ResourceType = ResourceType {
+        name:"revoke",
+        id:4,
+        flags: &[],
+        permissions: None,
+        fields: &[
             ResourceField {
-                key: "",
+                key: "bytecode",
                 r#type: ResourceFieldType::bytes,
                 descriptor: "",
                 required: true,
@@ -130,11 +168,21 @@ pub mod ResourceTypes {
             }
         ],
     };
+
     pub const Revoke: ResourceType = ResourceType {
         name:"revoke",
         id:4,
         flags: &[],
+        permissions: None,
         fields: &[],
     };
-    pub const by_type: &[ResourceType] = &[Key, Record, Transaction, Call];
+
+    pub const Generic: ResourceType = ResourceType {
+        name:"generic",
+        id:100,
+        flags: &[],
+        permissions: None,
+        fields: &[],
+    };
+    pub const by_type: &[ResourceType] = &[Generic, Key, Record, Transaction, Call];
 }

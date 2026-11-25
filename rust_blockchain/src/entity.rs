@@ -129,14 +129,14 @@ impl Entity{
         return false
     }
 
-    pub fn get_parent(&self) -> Option<Entity>{
+    pub fn get_parent(&self) -> Entity{
 
         let mut parent_entity = self.clone();
         if self.name_list.len()<2{
-            return None;
+            return self.clone();
         }
         parent_entity.name_list = self.name_list[..self.name_list.len() - 1].to_vec();
-        return Some(parent_entity);
+        return parent_entity;
     }
 
     pub fn has_parent(&self) -> bool{

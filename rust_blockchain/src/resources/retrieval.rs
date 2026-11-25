@@ -46,16 +46,6 @@ use crate::consensus;
 impl Resource{
     pub async fn exists(&self) -> Option<bool>{
         let mut resource_pool = ResourcePool.write().await;
-        let mut election_list = consensus::ElectionList.read().await;
-        for election in election_list.iter(){
-            for node in election.nodes.iter(){
-                for stake in node.stakes.iter(){
-                    if *stake == self.payload.as_ref().unwrap().grid{
-                        return Some(false);
-                    }
-                }
-            }
-        }
         for resource in resource_pool.iter(){
             if resource.payload.clone().unwrap().grid == self.payload.clone().unwrap().grid{
                 return Some(true)

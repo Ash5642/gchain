@@ -56,7 +56,7 @@ pub async fn verify_resource(item: &Resource, parent: Option<Resource>) -> Optio
     let entity = entity::Entity::get_entity(&item.clone().payload.unwrap().grid);
     let parent = entity.get_parent();
 
-    if parent.is_none(){
+    if parent == entity{
         ////////println!("Root entity element!");
         let geid = entity.get_geid();
         let geid_record = format!("{geid}[RECORD]");
@@ -99,7 +99,7 @@ pub async fn verify_resource(item: &Resource, parent: Option<Resource>) -> Optio
     //////println!("Direct check!");
     let entity = item.get_entity();
     let parent = entity.get_parent();   
-    if !parent.is_none(){
+    if parent == entity{
         match item.payload.as_ref().unwrap().r#type{
             structures::ResourceCodes::Record | structures::ResourceCodes::Key => {
                 ////////println!("Key validation!");
@@ -183,11 +183,9 @@ pub async fn verify_signature( signature: Resource) -> bool{
         }
     }
     if key_match.is_none() == true{
-        ////////println!("Key not included...");
         return false;
     }
     let signature_validity = signatures::check_signature(signature, key_match.unwrap());
-    ////////println!("{}", signature_validity);
     return signature_validity;
 }
 
@@ -196,6 +194,35 @@ pub async fn verify_signature( signature: Resource) -> bool{
 impl Resource{
     #[async_recursion]
     pub async fn verify_resource_session(&self, state: &mut state::StateSession) -> Option<String>{
+
+
+        let has_permission = self.check_permission(structures::PermisionTypeCode::Issue, &self.payload.as_ref().unwrap().grid);
+        println!("Has permission: {:?}", has_permission);
+
+
+        for proof in &self.proof{
+            let raw_validity = utils::check_merkle_proof(&proof.hashes, &self.to_hash());
+            if proof.grid.as_str() == ""{
+                let root_valid = blocks::Header::match_header(proof.hashes.last().unwrap().to_vec()).await;
+                if root_valid{
+                    println!("Validated by chain inclusion");
+                }
+            }
+        }
+
+        for nested_resource in self.signatures.iter(){
+            
+        }
+        None
+    }
+    #[async_recursion]
+    pub async fn verify_resource(&self) -> Option<String>{
+
+        let entity = self.get_entity();
+        let has_permission = self.check_permission(structures::PermisionTypeCode::Issue, &self.payload.as_ref().unwrap().grid);
+        println!("Has permission: {:?}", has_permission);
+
+
         for proof in &self.proof{
             let raw_validity = utils::check_merkle_proof(&proof.hashes, &self.to_hash());
             if proof.grid.as_str() == ""{

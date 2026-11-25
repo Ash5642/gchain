@@ -114,6 +114,7 @@ impl BLOCKHEAD{
             merkle_root: self.merkle,
             key: String::from(""),
             state_root: Vec::new(),
+            grind_nonce: Vec::new(),
             bloom:
                 Some(
                     BloomFilterProtobuf{

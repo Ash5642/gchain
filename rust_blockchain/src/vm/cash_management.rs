@@ -3,6 +3,8 @@ use super::Frame as Frame;
 use super::Balance as Balance;
 use super::ResourceVar as ResourceVar;
 use crate::resources;
+use crate::proto_bufs::Resource as Resource;
+
 use std::collections::HashMap;
 use crate::proto_bufs::Operand as Operand;
 use crate::proto_bufs::Instruction as Instruction;
@@ -15,108 +17,67 @@ use async_recursion::async_recursion;
 
 
 impl Execution{
+
     pub async fn transfer(&mut self, operands: &Vec::<Vec::<u8>>, state: &mut state::StateSession) -> Option<Vec::<u8>>{
+        
+        let sender = String::from_utf8_lossy(&operands[1]).into_owned();
+        let reciever = String::from_utf8_lossy(&operands[2]).into_owned();
+        let amt = u64::from_le_bytes(operands[0].clone()[..8].try_into().unwrap());
 
-        let reciever =  String::from_utf8_lossy(&operands[0]).into_owned();
-        let sender = self.entity.clone();
-        let amt: u64;
-        if operands[1].len() == 8{
-            amt = u64::from_le_bytes(operands[1].clone()[..8].try_into().unwrap());
-        }
-        else{
-            amt = 0 as u64;
-        }
-        let balance = self.get_balance(&sender, state).await;
-        if balance < amt{
+        let mut sender_balance = self.get_balance(&sender, state).await;
+        let mut reciever_balance = self.get_balance(&reciever, state).await;
+
+        if sender_balance<amt{
             return None;
         }
 
-        let sender_balance = self.update_balance(&sender, false, amt, state).await;
-        let reciever_balance = self.update_balance(&reciever, true, amt, state).await;
-        let identifier_raw = state.rand();
-        let identifier = hex::encode(identifier_raw);
-        let generated_transaction = crate::Resource::create_transaction(&self.entity, &reciever, amt, &identifier).await;
+        let identifier = hex::encode(state.rand());
+        let field_values = vec![
+            sender.clone().into_bytes(),
+            reciever.clone().into_bytes(),
+            amt.to_le_bytes().to_vec(),
+        ];
+        let new_transaction = Resource::create_resource(&sender, resources::structures::ResourceCodes::Transaction, &identifier, &field_values, state);
 
-        self.resources.insert(
-            generated_transaction.payload.as_ref().unwrap().grid.clone(), 
-            ResourceVar{
-                mutable: true,
-                resource: generated_transaction.clone()
-            }
-            
-        );
-        Some(generated_transaction.payload.as_ref().unwrap().grid.clone().bytes().collect())
+        let sender_balance = sender_balance - amt;
+        let reciever_balance = reciever_balance + amt;
+
+        if let Some(transaction) = new_transaction{
+            self.update_balance(&sender, sender_balance, state);
+            self.update_balance(&reciever, reciever_balance, state);
+            return Some(transaction.payload.as_ref().unwrap().grid.clone().into_bytes());
+        }
+        return None;
     }
-
-    pub async fn recieve(&mut self, operands: &Vec::<Vec::<u8>>, state: &mut state::StateSession) -> Option<Vec::<u8>>{
-
-        let sender =  String::from_utf8_lossy(&operands[0]).into_owned();
-        let reciever = self.entity.clone();
-
-        let amt: u64;
-        if operands[1].len() == 8{
-            amt = u64::from_le_bytes(operands[1].clone()[..8].try_into().unwrap());
-        }
-        else{
-            amt = 0 as u64;
-        }
-        let balance = self.get_balance(&sender, state).await;
-        if balance < amt{
-            return None;
-        }
-
-        let sender_balance = self.update_balance(&sender, false, amt, state).await;
-        let reciever_balance = self.update_balance(&reciever, true, amt, state).await;
-        let identifier_raw = state.rand();
-        let identifier = hex::encode(identifier_raw);
-        let generated_transaction = crate::Resource::create_transaction(&self.entity, &reciever, amt, &identifier).await;
-
-        self.resources.insert(
-            generated_transaction.payload.as_ref().unwrap().grid.clone(), 
-            ResourceVar{
-                mutable: true,
-                resource: generated_transaction.clone()
-            }
-            
-        );
-        Some(generated_transaction.payload.as_ref().unwrap().grid.clone().bytes().collect())
-    }
-
 
     pub async fn get_balance(&mut self, entity: &str, state: &mut state::StateSession) -> u64{
-        for balance in self.balances.iter(){
-            if balance.geid == entity{
-                return balance.balance
-            }
+
+        if let Some(balance) = self.balances.get(entity){
+            return balance.balance;
         }
-        let record = state.read_record(entity).await;
-        if record.is_none(){
-            return 0
+        if let Some(balance) = state.read_record(entity).await{
+            self.balances.insert(
+                entity.to_string(),
+                Balance{
+                    geid: entity.to_string(),
+                    balance: balance.balance
+                }
+            );
+            return balance.balance;
         }
-        let balance = record.as_ref().unwrap().balance;
-        //println!("READ BAA: {}", balance);
-        self.balances.push(
+        return 0
+
+    }
+
+    pub async fn update_balance(&mut self, geid: &str, balance: u64, state: &mut state::StateSession){
+        self.balances.insert(
+            geid.to_string(),
             Balance{
-                geid: entity.to_string(),
+                geid: geid.to_string(),
                 balance: balance
             }
         );
-        return record.as_ref().unwrap().balance;
     }
 
-    pub async fn update_balance(&mut self, entity: &str, incoming: bool, amt: u64, state: &mut state::StateSession) -> u64{
-        self.get_balance(entity, state).await;
-        for balance in self.balances.iter_mut(){
-            if balance.geid == entity{
-                if incoming{
-                    balance.balance = balance.balance + amt;
-                }
-                else{
-                    balance.balance = balance.balance - amt;
-                }
-                return balance.balance;
-            }
-        }
-        return 0;
-    }
+
 }

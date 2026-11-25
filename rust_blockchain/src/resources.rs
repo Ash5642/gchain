@@ -48,6 +48,7 @@ pub mod encoding;
 pub mod access;
 pub mod signatures;
 pub mod cache;
+pub mod permissions;
 
 use crate::resources::structures::ResourceType;
 #[derive(Debug)]
@@ -86,6 +87,15 @@ impl Resource{
             }
         }
     }
+    pub fn get_structure(&self) -> &ResourceType{
+        let resource_code: usize = self.payload.as_ref().unwrap().r#type as usize;
+        if resource_code < structures::ResourceTypes::by_type.len(){
+            return &structures::ResourceTypes::by_type[resource_code];
+        }
+        return &structures::ResourceTypes::Generic
+    }
+
+
 }
 
 fn xor_vec_in_place(a: &mut [u8], b: &[u8]) {

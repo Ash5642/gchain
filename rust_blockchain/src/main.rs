@@ -8,6 +8,7 @@ mod blocks;
 mod consensus;
 mod utils;
 mod resources;
+mod mutilated_merkle;
 mod client;
 mod entity;
 mod self_node;
@@ -31,7 +32,8 @@ use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 use futures_util::StreamExt;
 use tokio::time::{timeout, sleep, Duration};
 static SELF_GEID: OnceLock<String> = OnceLock::new();
-
+use rand::RngExt;
+use rand::Rng;
 fn get_geid() -> &'static str {
     let args: Vec<String> = env::args().collect();
     let self_geid = &args[3];
@@ -219,6 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state::initialize_state().await;
 
     let mut new_session = state::StateSession::start_session().await;
+    
 
     println!("Session root: {}", hex::encode(new_session.get_root().await));
     println!("Self balance: {:?}", new_session.read_record(crate::get_geid()).await);

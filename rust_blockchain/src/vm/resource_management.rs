@@ -105,6 +105,21 @@ impl Execution{
         return Some(operands[0].clone())
     }
 
+    pub async fn revoke_resource(&mut self, operands: &Vec::<Vec::<u8>>) -> Option<Vec::<u8>>{
+        let resource_grid = String::from_utf8_lossy(&operands[0]).into_owned();
+        let resource_wrapped = Resource::find_resource(resource_grid.clone()).await;
+        if resource_wrapped.is_none(){
+            eprintln!("Resource GRID invalid!");
+            return None;
+        }
+        let new_resource_var = ResourceVar{
+            mutable: false,
+            resource: resource_wrapped.unwrap()
+        };
+        self.revoked.push(resource_grid);
+        return Some(operands[0].clone())
+    }
+
     pub async fn get_resource(&mut self, operands: &Vec::<Vec::<u8>>) -> Option<Resource>{
 
          
@@ -114,12 +129,21 @@ impl Execution{
 
     pub async fn issue(&mut self, operands: &Vec::<Vec::<u8>>, state: &mut state::StateSession) -> Option<Vec::<u8>>{
 
-        let resource_type = String::from_utf8_lossy(&operands[1]).into_owned();
+        let resource_type = u32::from_le_bytes(operands[1].clone().try_into().expect("Error"));
+        match resource_type{
+            resources::structures::ResourceCodes::Transaction => {
+                println!("Can't generate resource of type {}", resource_type);
+                return None
+            }
+            _ => {
+                
+            }
+        }
     
         let identifier_key = hex::encode(state.rand());
         let field_values = operands[2..].to_vec();
         let resource_geid = String::from_utf8_lossy(&operands[0]).into_owned();
-        let new_resource = Resource::create_resource(&resource_geid, &resource_type, &identifier_key, &field_values, state);
+        let new_resource = Resource::create_resource(&resource_geid, resource_type, &identifier_key, &field_values, state);
         if new_resource.is_none(){
             return None
         }

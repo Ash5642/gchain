@@ -71,7 +71,8 @@ pub struct Header{
     pub resources_total: i32,
     pub resources: Vec::<Resource>,
     pub merkle_tree: Vec::<Vec::<MerkleNode>>,
-    pub state: Option<state::StateSession>
+    pub state: Option<state::StateSession>,
+    pub grind_nonce: Option<[u8; 32]>
 }
 
 
@@ -87,30 +88,8 @@ impl Header{
         (Header::get_num().await as u64).to_le_bytes().to_vec()
     }
     pub fn to_bytes(&self) -> Vec::<u8>{
-        let saved_bits: Vec<u64> = self.bloom.clone().unwrap().as_slice().to_vec();
-        let num_hashes = self.bloom.clone().unwrap().num_hashes();
-
-        let u8_vec: Vec<u8> = saved_bits
-            .iter()
-            .flat_map(|&x| x.to_ne_bytes()) // Use to_be_bytes() or to_le_bytes() for specific endianness
-            .collect();
-        let header_protobuf = proto_bufs::Header{
-            stake: String::from(""),
-            key: "".to_string(),
-            num: self.num as i32,
-            merkle_root: self.merkle_root.clone(),
-            bloom: Some(
-                proto_bufs::BloomFilter{
-                    filter: u8_vec,
-                    num_hashes: num_hashes as i32
-                }
-            ),
-            state_root:self.state_root.clone(),
-            previous: self.previous_hash.clone().unwrap()
-
-        };
         let mut buf = Vec::new();
-        header_protobuf.encode(&mut buf);
+        self.to_protobuf().encode(&mut buf);
         return buf;
     }
 
@@ -135,10 +114,26 @@ impl Header{
                 }
             ),
             state_root:self.state_root.clone(),
-            previous: self.previous_hash.clone().unwrap()
+            previous: self.previous_hash.clone().unwrap(),
+            grind_nonce: self.grind_nonce.unwrap_or([0u8; 32]).to_vec()
 
         };
         return header_protobuf;
+    }
+
+    pub fn to_body_protobufs(&self) -> proto_bufs::Block{
+        let full_protobuf = proto_bufs::Block{
+            body: Some(self.to_protobuf()),
+            body_signature: Vec::new(),
+            resources: self.resources.clone()
+        };
+        return full_protobuf;
+    }
+
+    pub fn to_body_bytes(&self) -> Vec::<u8>{
+        let mut body_encoded = Vec::new();
+        self.to_body_protobufs().encode(&mut body_encoded);
+        return body_encoded;
     }
 
     pub fn add_header(pos: u32, merkle_root:Vec::<u8>, filter: Vec::<u64>, hash_nums:u32, resources_total: u32, previous_hash: Option<Vec::<u8>>) -> Header{
@@ -158,7 +153,8 @@ impl Header{
             signature: Vec::new(),
             key: "".to_string(),
             state_root: Vec::new(),
-            state: None
+            state: None,
+            grind_nonce: None
         }
     }
 

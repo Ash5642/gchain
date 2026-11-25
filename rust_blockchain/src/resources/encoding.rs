@@ -55,6 +55,11 @@ impl Resource{
     pub fn get_entity(&self) -> entity::Entity {
         return entity::Entity::get_entity(&self.payload.as_ref().unwrap().grid)
     }
+    pub fn get_parent_entity(&self) -> entity::Entity {
+        let entity = entity::Entity::get_entity(&self.payload.as_ref().unwrap().grid);
+        let parent = entity.get_parent();
+        return parent
+    }
 
     pub fn to_hash(&self) -> Vec::<u8>{
         

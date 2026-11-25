@@ -54,7 +54,16 @@ pub fn get_hash(mut item:Vec::<u8>) -> Vec::<u8>{
     
 }
 
+pub fn get_ref_hash(item: &Vec::<u8>) -> Vec::<u8>{
 
+    let mut result;
+    let mut hasher = Sha256::new();
+    hasher.update(item);
+    result = hasher.finalize().to_vec();
+    let encoded = hex::encode(&result);
+    return result;
+    
+}
 
 
 pub fn check_merkle_proof(proof: &Vec::<Vec::<u8>>, resource: &Vec::<u8>) -> bool{

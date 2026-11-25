@@ -19,7 +19,6 @@ use crate::blocks::merkle::MerkleNode;
 
 
 
-
 use tokio::sync::mpsc::{Sender, Receiver};
 use tokio::sync::mpsc;
 use crate::resources;
@@ -36,7 +35,7 @@ use fastbloom::BloomFilter;
 use std::sync::{Mutex, LazyLock, Arc};
 use tokio::sync::RwLock;
 use crate::resources::signatures;
-
+use std::sync::atomic::Ordering;
 use libp2p::{
     gossipsub, mdns, noise,
     swarm::{NetworkBehaviour, SwarmEvent},
@@ -46,83 +45,52 @@ use libp2p::{
 
 
 impl Election{
-     pub async fn reveal(index: usize, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>) {
-        //println!("Revealing...");
+     pub async fn reveal(index: &Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>) {
         let mut election_list = ElectionList.write().await;
         let election = match election_list.get_mut(index) {
             Some(e) => e,
-            None => return, // Safely handle out-of-bounds index
+            None => return,
         };
-        if election.revealed{
+        if election.stage > 1{
             return
         }
-        let mut self_node: Option<Node> = None;
+        let mut self_node = match election.nodes.get_mut(crate::get_geid()){
+            Some(n) => n,
+            _ => return,
+        };
 
-        for node in election.nodes.iter(){
-            if node.geid == crate::get_geid(){
-                self_node = Some(node.clone());
-                break;
-            }
-        }
-        if self_node.is_none(){
-            return
-        }
-        let self_node = self_node.unwrap().clone();
-        let mut combined = Vec::with_capacity(self_node.value.len() + self_node.nonce.len());
-        combined.extend_from_slice(&self_node.value);
-        combined.extend_from_slice(&self_node.nonce);
-        let signed_commit = self_node::sign_resource(combined.clone()).await;
-        let mut buf = Vec::<u8>::with_capacity(32);
-        let vote_message = proto_bufs::ConsensusMessage{
-            r#type: String::from("REVEAL"),
-            identifier: election.identifier.clone(),
-            message: combined,
-            signature: signed_commit.clone(),
-            geid: crate::get_geid().to_string(),
-            key: self_node::sign_key().await.clone()
-        };
-        vote_message.encode(&mut buf).unwrap();
-        let vote_chainmessage = proto_bufs::ChainMessage{
-            r#type: String::from("CONSENSUS"),
-            message: buf.clone()
-        };
-        election.revealed = true;
-        if tx_msg.send(vote_chainmessage.clone()).await.is_err() {}
-    }
-    pub async fn add_reveal(index: usize, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>, consensus_message: proto_bufs::ConsensusMessage) {
-        let mut election_list = ElectionList.write().await;
-        let election = match election_list.get_mut(index) {
-            Some(e) => e,
-            None => return, // Safely handle out-of-bounds index
-        };
-        let mut node_match: Option<&mut Node> = None;
-
-        for node in election.nodes.iter_mut(){
-            if node.geid == consensus_message.geid{
-                node_match = Some(&mut *node);
-                break;
-            }
-        }
-        if node_match.is_none(){
-            //return
-        }
         
-        let node_match = node_match.unwrap();
+        let mut combined = Vec::new();
+        combined.extend_from_slice(&self_node.value.unwrap());
+        combined.extend_from_slice(&self_node.commit_nonce.unwrap());
+        let signed_commit = self_node::sign_resource(combined.clone()).await;
+        Election::send_consensus_message(index, "REVEAL", &combined, tx_msg).await;
 
-        let node_key = consensus_message.clone().key.unwrap().clone();
-        let key_validity = validators::verify_resource(&node_key, None).await;
-        let node_key_loaded = signatures::load_key(&node_key).unwrap();
-        let signature_valid = node_key_loaded.check_signature_bytes(consensus_message.signature.clone(), consensus_message.message.clone());
+        election.stage = 2;
+    }
 
-        let mut include = true;
-        if  !signature_valid || key_validity.is_none() || key_validity.as_ref().unwrap().as_str() != "CHAIN"{
-            include = false;
-        }
-        if !include{
-            //return;
-        }
+
     
-        node_match.value = consensus_message.message[..32].to_vec();
-        node_match.nonce = consensus_message.message[32..].to_vec();
+    pub async fn add_reveal(index: &Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>, consensus_message: proto_bufs::ConsensusPayload) {
+        let mut election_list = ElectionList.write().await;
+
+        let election = match election_list.get_mut(index) {
+            Some(e) => e,
+            None => return, // Safely handle out-of-bounds index
+        };
+        let mut node_match = match election.nodes.get_mut(&consensus_message.geid){
+            Some(n) => n,
+            _ => return,
+        };
+
+        let hashed_reveal = utils::get_ref_hash(&consensus_message.message);
+        if node_match.commit != *hashed_reveal{
+            println!("Wrong value revealed!");
+            return;
+        }
+        node_match.value = Some(consensus_message.message[..32].try_into().expect("Size!"));
+        node_match.commit_nonce = Some(consensus_message.message[32..].try_into().expect("Size!"));
+        println!("Reveal from: {}", consensus_message.geid);
+        
     }
 }

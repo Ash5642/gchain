@@ -236,4 +236,10 @@ impl blocks::Header{
         conn.close().await?;
         Ok(())
     }
+
+
+    pub async fn save(&self){
+        blocks::Header::save_resources(self).await;
+        blocks::Header::add_block_db(self).await;
+    }
 }

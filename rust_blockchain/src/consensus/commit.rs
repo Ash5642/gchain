@@ -15,7 +15,7 @@ use prost::Message;
 use crate::resources::validators;
 use std::fs;
 use crate::blocks::merkle::MerkleNode;
-
+use crate::state;
 
 
 
@@ -36,7 +36,7 @@ use fastbloom::BloomFilter;
 use std::sync::{Mutex, LazyLock, Arc};
 use tokio::sync::RwLock;
 use crate::resources::signatures;
-
+use std::num::TryFromIntError;
 use libp2p::{
     gossipsub, mdns, noise,
     swarm::{NetworkBehaviour, SwarmEvent},
@@ -46,120 +46,80 @@ use libp2p::{
 
 
 impl Election{
-    pub async fn commit(index: usize, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>) {
-        //println!("Committing...");
+    pub async fn commit(index: &Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>) {
         let mut election_list = ElectionList.write().await;
         let election = match election_list.get_mut(index) {
             Some(e) => e,
             None => return, // Safely handle out-of-bounds index
         };
-        if election.commited {
+        if election.stage > 0 {
             return;
-        }
-        //////println!("CP1");
-        let value: Vec::<u8> = String::from("test").into_bytes();
-        let nonce: Vec::<u8> = String::from("test_nonce").into_bytes();
-        
-        
+        }        
+
+        let mut staked: u64 = 100;
         let mut value = vec![0u8; 32];
         let mut nonce = vec![0u8; 32];
         rand::rng().fill_bytes(&mut value);
         rand::rng().fill_bytes(&mut nonce);
 
-
         let mut combined = Vec::with_capacity(value.len() + nonce.len());
         combined.extend_from_slice(&value);
         combined.extend_from_slice(&nonce);
 
-        let mut result;
-        let mut hasher = Sha256::new();
+        println!("Committed: {}", hex::encode(&combined));
 
-        
+        let result = utils::get_ref_hash(&combined);
+        let mut hash_stake_combined = Vec::with_capacity(value.len() + nonce.len());
+        hash_stake_combined.extend_from_slice(&result);
+        hash_stake_combined.extend_from_slice(&staked.to_le_bytes());
 
-        let mut commit_buf = Vec::<u8>::with_capacity(32);
-        let commit_payload = proto_bufs::CommitMessage{
-            hash: value.clone(),
-            stakes: vec![]
-        };
-        commit_payload.encode(&mut commit_buf).unwrap();
 
-        hasher.update(&combined);
-        result = hasher.finalize().to_vec();
-        let args: Vec<String> = env::args().collect();
-        let db_dir = args[2].clone();
-        //////println!("CP2");
-        let signed_commit = self_node::sign_resource(commit_buf.clone()).await;
-        election.nodes.push(
+        election.nodes.insert(
+            crate::get_geid().to_string(),
             Node{
+                proposed: None,
+                commit: result.clone().try_into().expect("IMMP"),
+                commit_nonce: Some(nonce.try_into().expect("IMMP")),
+                value: Some(value.clone().try_into().expect("IMMP")),
+                stake: 100,
+                reveal_nonce: None,
                 node: None,
-                commit: result.clone(),
-                value: value.clone(),
                 geid: crate::get_geid().to_string(),
-                nonce: nonce,
-                validated: false,
-                stakes: vec![]
             }
         );
-        //////println!("CP3");
-        let mut buf = Vec::<u8>::with_capacity(32); 
-        let vote_message = proto_bufs::ConsensusMessage{
-            r#type: String::from("COMMIT"),
-            identifier: election.identifier.clone(),
-            message: commit_buf.clone(),
-            signature: signed_commit.clone(),
-            geid: crate::get_geid().to_string(),
-            key: self_node::sign_key().await.clone()
-        };
-        vote_message.encode(&mut buf).unwrap();
-        let vote_chainmessage = proto_bufs::ChainMessage{
-            r#type: String::from("CONSENSUS"),
-            message: buf.clone()
-        };
-        election.commited = true;
-        if tx_msg.send(vote_chainmessage.clone()).await.is_err() {}
-        //////println!("Commit successful!");
+
+        Election::send_consensus_message(index, "COMMIT", &hash_stake_combined, tx_msg).await;
+        election.stage = 1;
     }
-    pub async fn add_commit(index: usize, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>, sender: PeerId, consensus_message: proto_bufs::ConsensusMessage) {
+
+
+    pub async fn add_commit(index: &Vec::<u8>, tx_msg: mpsc::Sender<proto_bufs::ChainMessage>, sender: PeerId, consensus_message: proto_bufs::ConsensusPayload) -> bool {
+        let commit_stake = u64::from_le_bytes(consensus_message.message[32..].try_into().expect("Stake value encding error!"));
+
+
+        
+        println!("Commit for {} is valid staking {}", consensus_message.geid, commit_stake);
+
         let mut election_list = ElectionList.write().await;
         let election = match election_list.get_mut(index) {
             Some(e) => e,
-            None => {
-                return
-            }, // Safely handle out-of-bounds index
+            None => return false
         };
-        let mut exists = false;
-        for node in election.nodes.iter(){
-            if node.geid.clone() == consensus_message.geid.clone(){
-                exists = true;
-            }
-        }
-        let commit_payload = proto_bufs::CommitMessage::decode(&(consensus_message.message.clone())[..]).unwrap();
-
-        let node_key = consensus_message.clone().key.unwrap().clone();
-        let key_validity = validators::verify_resource(&node_key.clone(), None).await;
-        let node_key_loaded = signatures::load_key(&node_key).unwrap();
-        let signature_valid = node_key_loaded.check_signature_bytes(consensus_message.signature.clone(), consensus_message.message.clone());
-        
-
-        let mut include = true;
-        if exists || !signature_valid || key_validity.is_none() || key_validity.as_ref().unwrap().as_str() != "CHAIN"{
-            include = false;
-        }
-
-        if !include{
-            //return;
-        }
-
-        election.nodes.push(
+        election.staked += commit_stake;
+        election.nodes.insert(
+            consensus_message.geid.clone(),
             Node{
-                node: Some(sender),
-                commit: commit_payload.hash.clone(),
-                value: Vec::with_capacity(32),
+                proposed: None,
+                commit: consensus_message.message[..32].try_into().expect(""),
+                commit_nonce: None,
+                stake: commit_stake,
+                value: None,
+                reveal_nonce: None,
                 geid: consensus_message.geid.clone(),
-                nonce: Vec::with_capacity(32),
-                validated: false,
-                stakes: commit_payload.stakes.clone()
+                node: Some(sender)
+
             }
         );
+        return false;
     }
 }

@@ -187,7 +187,7 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                 match job.message.r#type.as_str(){
                     "CMD:ELECTION"=>{
                         //test path to skip consensus
-                        let new_header = blocks::Header::generate_header(Vec::new()).await;
+                        let new_header = blocks::Header::generate_header(&Vec::new()).await;
                         let head_saved = blocks::Header::add_block_db(&new_header).await;
                         let blocks_saved = blocks::Header::save_resources(&new_header).await;
                     }
@@ -198,69 +198,39 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                             add_resource(&job.message.message, new_tx_msg, true).await;
                         });
                     }
-                    "ELECTION"=>{
+                    "ELECTION"|"REVEAL"|"TARGET"=>{
                         ////println!("Starting election!!");
                         let mut header_list = blocks::HeadersList.read().await;
                         let header_num = header_list.len();
                         let identifier = (header_num as i32).to_le_bytes().to_vec();
                         drop(header_list);
-                        ////println!("Starting election {:?}!", identifier);
-                        let election_index = consensus::Election::start_election(Some(identifier).clone()).await;
                         let mut new_tx_msg = tx_msg.clone();
-                        task::spawn(async move {
-                            consensus::Election::commit(election_index, new_tx_msg).await
-                        });
-                        
-                    }
-                    "REVEAL"=>{
-                        ////println!("Starting reveal!");
-                        let mut header_list = blocks::HeadersList.read().await;
-                        let header_num = header_list.len();
-                        let identifier = (header_num as i32).to_le_bytes().to_vec();
-                        drop(header_list);
-                        let election_index = consensus::Election::start_election(Some(identifier)).await;
-                        //println!("Elindex: {}", election_index);
-                        let mut new_tx_msg = tx_msg.clone();
-                        task::spawn(async move {
-                            consensus::Election::reveal(election_index, new_tx_msg).await
-                        });
-                        
-                    }
-                    "TARGET"=>{
-                        ////println!("Starting distance!");
-                        let mut header_list = blocks::HeadersList.read().await;
-                        let header_num = header_list.len();
-                        let identifier = (header_num as i32).to_le_bytes().to_vec();
-                        drop(header_list);
-                        let election_index = consensus::Election::start_election(Some(identifier)).await;
-                        //println!("Elindex: {}", election_index);
-                        let mut new_tx_msg = tx_msg.clone();
-                        task::spawn(async move {
-                            consensus::Election::set_target(election_index, new_tx_msg).await
-                        });
-                    }
-                    "SHOW"=>{
-                        ////println!("Showing election!");
-                        let election_list = consensus::ElectionList.read().await;
-                        let mut target = vec![0u8; 32];
-                        rand::rng().fill_bytes(&mut target);
-                        //println!("Target: {}", hex::encode(target.clone()));
-                        
-                        for election in election_list.iter(){
-                            //println!("\nElection: {}\nValidator: {:?}\n", hex::encode(election.identifier.clone()), election.validator);
-                            for node in election.nodes.iter(){
-                                let distance = utils::xor_bit_distance(&node.value[..], &target[..]);
-                                println!(
-                                    "Node: {}\nCommited: {}\nValue: {}\nNonce: {}\nDistance: {}\nVote: {}\n", 
-                                    node.geid, 
-                                    hex::encode(node.commit.clone()),
-                                    hex::encode(node.value.clone()),
-                                    hex::encode(node.nonce.clone()),
-                                    distance,
-                                    node.validated
-                                );
+                        consensus::Election::start_election(&identifier).await;
+                        match job.message.r#type.as_str(){
+                            "ELECTION" => {
+                                task::spawn(async move {
+                                    consensus::Election::commit(&identifier, new_tx_msg).await
+                                });
+                            },
+                            "REVEAL" => {
+                                task::spawn(async move {
+                                    consensus::Election::reveal(&identifier, new_tx_msg).await
+                                });
+                            },
+                            "TARGET" => {
+                                task::spawn(async move {
+                                    consensus::Election::set_target(&identifier, new_tx_msg).await
+                                });
+                            }
+                            _ =>{
+
                             }
                         }
+
+                        
+                    }
+                    "SHOW"=>{
+
                     }
                     "CMD:DUMP" => {
                         utils::create_dump().await;
@@ -279,39 +249,51 @@ pub async fn start_processing(mut rx_prc: Receiver<PROCESS>, tx_msg: Sender<Chai
                     }
                     "CONSENSUS" => {
                         let consensus_message = proto_bufs::ConsensusMessage::decode(&(job.message.message)[..]).unwrap(); 
-                        let election_index = consensus::Election::start_election(Some(consensus_message.identifier.clone())).await;
+                        let consensus_message_valid = consensus::Election::check_consensus_message(&consensus_message).await;
+                        if !consensus_message_valid{
+                            println!("Consensus message format invalid!");
+                            continue;
+                        }
+                        else{
+                            println!("Conensus message is valid!");
+                        }
+                        let consensus_payload = consensus_message.payload.unwrap();
+                        consensus::Election::start_election(&consensus_payload.identifier).await;
+                        let identifier = consensus_payload.identifier.clone();
+                        let identifier_commit_clone = identifier.clone();
                         let mut new_tx_msg_commit = tx_msg.clone();
+                        
                         task::spawn(async move {
-                            consensus::Election::commit(election_index, new_tx_msg_commit).await
+                            consensus::Election::commit(&identifier_commit_clone, new_tx_msg_commit).await
                         });
+                        let identifier_clone = identifier.clone();
                         let mut new_tx_msg = tx_msg.clone();
-                        match consensus_message.r#type.as_str(){
+                        match consensus_payload.r#type.as_str(){
                             "COMMIT" => {
-                                //println!("Recieved commit!");
                                 task::spawn(async move {
-                                    consensus::Election::add_commit(election_index, new_tx_msg, job.node.unwrap().clone(), consensus_message.clone()).await
+                                    consensus::Election::add_commit(&identifier, new_tx_msg, job.node.unwrap().clone(), consensus_payload.clone()).await
                                 });
                             } 
-
                             "REVEAL" => {
                                 let mut new_tx_msg_reveal = tx_msg.clone();
                                 task::spawn(async move {
-                                    consensus::Election::reveal(election_index, new_tx_msg_reveal).await
+                                    consensus::Election::reveal(&identifier, new_tx_msg_reveal).await
                                 });
                                 task::spawn(async move {
-                                    consensus::Election::add_reveal(election_index, new_tx_msg, consensus_message.clone()).await
+                                    consensus::Election::add_reveal(&identifier_clone, new_tx_msg, consensus_payload).await
                                 });
                             } 
                             "TARGET" => {
-                                consensus::Election::add_target(election_index, consensus_message.message.clone(), new_tx_msg).await;
-                                
+                                let mut new_tx_msg_reveal = tx_msg.clone();
+                                task::spawn(async move {
+                                    consensus::Election::select_PoS_validator(&identifier, new_tx_msg_reveal).await
+                                });
                             } 
                             "PROPOSE" => {
-                                consensus::Election::validate_block(election_index, consensus_message.clone(), new_tx_msg).await;
-                            } 
-                            "VALIDATE" => {
-                                //println!("Checking proposed block!");
-                                consensus::Election::add_validation(election_index, consensus_message.clone(), new_tx_msg).await;
+                                let mut new_tx_msg_reveal = tx_msg.clone();
+                                task::spawn(async move {
+                                    consensus::Election::validate_block(&identifier, consensus_payload, new_tx_msg_reveal).await
+                                });
                             } 
 
                             _ => {}
@@ -360,7 +342,7 @@ pub async fn add_resource(value: &Vec::<u8>, tx_msg: Sender<ChainMessage>, broad
             async move {
                 //println!("Recieved: {}", resource_clone.payload.as_ref().unwrap().grid);
                 let exists_check = resource_clone.exists();
-                let validation_check = validators::verify_resource(&resource_clone, None);
+                let validation_check = resource_clone.verify_resource();
                 let exists = exists_check.await;
                 let validity = validation_check.await;
                 if !exists.is_none(){

@@ -48,6 +48,7 @@ mod vm_cryptography;
 
 
 mod DataType {
+    pub const null:u8 = 0;
     pub const grid:u8 = 1;
     pub const text:u8 = 2;
     pub const uint:u8 = 3;
@@ -138,11 +139,12 @@ pub struct Execution{
     inputs: Vec::<ExecutionIO>,
     memory: MemorySpace,
     pub generated: HashMap<String, Resource>,
+    pub revoked: Vec::<String>,
     pub loaded: HashMap<String, Resource>,
     pub resources: HashMap<String, ResourceVar>,
     pub args: HashMap<Vec<u8>, MemoryVar>,
     stack: Vec::<Frame>,
-    balances: Vec::<Balance>,
+    balances: HashMap::<String, Balance>,
     caller: String,
     call_grid: String,
     cost: u64,
@@ -159,10 +161,8 @@ impl Execution{
                 resolved.push(resolve_result.value);
             }
             else{
-                //println!("Resolve error!");
                 return None
             }
-
         }
         let mut result: Option<Vec::<u8>> = None;
         let mut result_type: u8;
@@ -172,16 +172,15 @@ impl Execution{
                 result_type =  DataType::grid;
             },
             OpCode::Load => {
-                //println!("Loading resource!");
                 result = self.load_resource(&resolved).await;
-                result_type =  DataType::boolean;
+                result_type =  DataType::grid;
             },
             OpCode::Cash => {
                 result = self.transfer(&resolved, state).await;
                 result_type =  DataType::grid;
             }
             OpCode::TakeCash => {
-                result = self.recieve(&resolved, state).await;
+                result = None;
                 result_type =  DataType::grid;
             }
 
@@ -338,10 +337,11 @@ impl Execution{
             loaded: HashMap::new(),
             caller: "TestUser2".to_string(),
             args: HashMap::new(),
+            revoked: Vec::new(),
             memory: MemorySpace{
                 vars: HashMap::new()
             },
-            balances: Vec::new(),
+            balances: HashMap::new(),
             success: false,
         };
         for argument in executable.arguments.iter(){
@@ -394,9 +394,8 @@ impl Execution{
             self.success = false;
             return
         }
-        for balance in self.balances.iter(){
-            //println!("Updating balance for: {} to {}", balance.geid, balance.balance);
-            state.get_geid(&balance.geid, Some(balance.balance)).await;
+        for (geid, balance) in self.balances.iter(){
+            state.get_geid(&geid, Some(balance.balance)).await;
         }
         for (pos, generated) in self.resources.clone(){
             //println!("Generated: {} {}", generated.resource.payload.as_ref().unwrap().grid, self.call_grid);

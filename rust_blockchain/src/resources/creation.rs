@@ -44,33 +44,32 @@ use super::FieldValue;
 
 
 impl Resource{
-    pub fn create_resource(geid: &str, r#type: &str, identifier: &str, field_values: &Vec::<Vec::<u8>>, state: &mut state::StateSession) -> Option<Resource>{
+    pub fn create_resource(geid: &str, r#type: u32, identifier: &str, field_values: &Vec::<Vec::<u8>>, state: &mut state::StateSession) -> Option<Resource>{
         let mut fields: Vec::<Field> = Vec::new();
-        let mut type_template = Resource::type_str_to_uint(r#type);
+        let template = &resources::structures::ResourceTypes::by_type[r#type as usize];
         let mut resource_type: u32 = 0;
-        if let Some(template) = type_template{
-            if template.fields.len()!=field_values.len(){
-                return None
-            }
-            resource_type = template.id;
-            
-            for (pos, field) in template.fields.into_iter().enumerate(){
-                if field_values[pos].clone().len() == 0{
-                    if field.required{
-                        return None;
-                    }
-                }
-                fields.push(
-                    Field{
-                        key: field.key.to_string(),
-                        r#type: field.r#type.to_string(),
-                        value: field_values[pos].clone(),
-                        nonce: state.rand(),
-                        id: field.id,
-                    }
-                );
-            }
+        if template.fields.len()!=field_values.len(){
+            return None
         }
+        resource_type = template.id;
+        
+        for (pos, field) in template.fields.into_iter().enumerate(){
+            if field_values[pos].clone().len() == 0{
+                if field.required{
+                    return None;
+                }
+            }
+            fields.push(
+                Field{
+                    key: field.key.to_string(),
+                    r#type: field.r#type.to_string(),
+                    value: field_values[pos].clone(),
+                    nonce: state.rand(),
+                    id: field.id,
+                }
+            );
+        }
+        
 
 
         let mut new_resource = Resource{
@@ -80,7 +79,8 @@ impl Resource{
                     r#type: resource_type,
                     fields: fields,
                     action: "GENERATED".to_string(),
-                    nonce: state.rand()
+                    nonce: state.rand(),
+                    permissions: vec![],
                 },
             ),
             proof: Vec::new(),
@@ -95,6 +95,7 @@ impl Resource{
             payload: Some(
                 Payload{
                     grid:format!("{reciever}[CASH]={identifier}"),
+                    permissions: vec![],
                     r#type: structures::ResourceTypes::Transaction.id,
                     action: "GENERATED".to_string(),
                     fields: vec![
@@ -134,6 +135,7 @@ impl Resource{
         let transaction = Resource{
             payload: Some(
                 Payload{
+                    permissions: vec![],
                     grid:format!("{reciever}[CASH]={identifier}"),
                     r#type: structures::ResourceCodes::Transaction,
                     action: "ADDED".to_string(),

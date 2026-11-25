@@ -75,6 +75,7 @@ impl blocks::Header{
                             Resource{
                                 payload:Some(
                                     Payload{
+                                        permissions: vec![],
                                         grid: row.get(0)?,
                                         r#type: row.get(1)?,
                                         action: row.get(2)?,

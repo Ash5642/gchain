@@ -38,14 +38,16 @@ impl blocks::Header{
             key: "".to_string(),
             signature: Vec::new(),
             state_root: generated_state,
-            state: Some(new_session)
+            state: Some(new_session),
+
+            grind_nonce: None
         };
 
         return Some(new_header);
     }
 
 
-    pub async fn generate_header(identifier: Vec::<u8>) -> blocks::Header{
+    pub async fn generate_header(identifier: &Vec::<u8>) -> blocks::Header{
         let mut commit_global_list = resources::ResourcePool.write().await;
         commit_global_list.push(
             Resource::create_reward(crate::get_geid(), 1000, "REWARD").await
@@ -55,7 +57,6 @@ impl blocks::Header{
             return header;
         }
         panic!("Error: header coulnd't be generated!");
-        return generated.unwrap()
         
     }
 
